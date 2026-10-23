@@ -2,7 +2,8 @@
 #
 #   -DPACK=0|1   1: DEST/game.pak, encrypted (release); 0: a plain copy of the asset tree
 #   -DSRC=<dir>  the game's assets folder
-#   -DDEST=<dir> bundle Resources folder (or Android pack folder)
+#   -DDEST=<dir> bundle Resources folder (or Android pack folder); XCODE: the resources folder of
+#                the bundle Xcode is building ($TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH)
 #   -DTOOL=<nova_pack> -DKEYFILE=<key file>   (pack mode)
 #
 # DEST/.nova-staged lists what the previous run staged; those files are removed first, so
@@ -14,6 +15,12 @@ foreach(var SRC DEST)
         message(FATAL_ERROR "NovaStageAssets: -D${var}= is required")
     endif()
 endforeach()
+if(DEST STREQUAL "XCODE")
+    if(NOT DEFINED ENV{TARGET_BUILD_DIR} OR NOT DEFINED ENV{UNLOCALIZED_RESOURCES_FOLDER_PATH})
+        message(FATAL_ERROR "NovaStageAssets: DEST=XCODE outside an Xcode build phase")
+    endif()
+    set(DEST "$ENV{TARGET_BUILD_DIR}/$ENV{UNLOCALIZED_RESOURCES_FOLDER_PATH}")
+endif()
 set(manifest "${DEST}/.nova-staged")
 
 if(EXISTS "${manifest}")

@@ -85,7 +85,10 @@ function(nova_add_game name)
     if(APPLE)
         # Assets are staged after linking: a plain copy in dev builds, one encrypted game.pak in
         # pack builds. Any asset or key change relinks the target, which re-stages.
-        if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
+        if(CMAKE_GENERATOR STREQUAL "Xcode")
+            # Xcode's bundle path contains ${EFFECTIVE_PLATFORM_NAME}; the script asks Xcode instead.
+            set(resources_dir "XCODE")
+        elseif(CMAKE_SYSTEM_NAME STREQUAL "iOS")
             set(resources_dir "$<TARGET_BUNDLE_CONTENT_DIR:${target}>")
         else()
             set(resources_dir "$<TARGET_BUNDLE_CONTENT_DIR:${target}>/Resources")
