@@ -223,7 +223,8 @@ def logo_shader(d):
         outer = rounded_rect_sdf(x, y, d, d, d * 0.22)
         r = math.hypot(x - d / 2, y - d / 2)
         ring = abs(r - d * 0.28) - d * 0.05
-        lum = 0.55 if ring < 0 else (1.0 - 0.2 * (y / d))
+        base = 1.0 - 0.2 * (y / d)
+        lum = base + (0.55 - base) * coverage(ring)  # anti-aliased ring
         return lum, coverage(outer)
     return shade
 
