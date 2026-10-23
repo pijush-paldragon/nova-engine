@@ -70,7 +70,27 @@ Moving or renaming the engine folder therefore only needs the variable or overri
 - Brick Breaker (`nova-engine/games/brickbreaker`) is built the same way as your games and is the engine's regression test: run `ctest --preset macos-debug` and its 4200-frame smoke test in the engine repo before pushing engine changes.
 - **Game-owned copies.** The engine's code, CMake and shared Android build logic (`platforms/android/nova-app.gradle`) reach every game automatically. A few files were *copied* into each game when it was created and are now yours: `platforms/ios/Info.plist.in` and `LaunchScreen.storyboard`, and in `platforms/android/` the `AndroidManifest.xml`, root `build.gradle` (Android Gradle Plugin version) and the Gradle wrapper. If an engine update changes these (e.g. an SDL upgrade that needs a newer plugin), compare your copy with `nova-engine/templates/game/` and apply the change.
 
-## 4. Releasing
+## 4. Sprite atlases
+
+Put each sprite in its own image file (PNG with transparency is best) in a folder outside `assets/`, e.g. `art/gameplay/`, then pack the folder:
+
+```bash
+python3 ../nova-engine/tools/pack_atlas.py art/gameplay -o assets/gameplay
+```
+
+That writes `assets/gameplay.png` and `assets/gameplay.atlas`, choosing the smallest power-of-two image size (up to 2048×2048) that fits every sprite. Each region is named after its file; subfolders become prefixes (`art/gameplay/ui/button.png` → `"ui/button"`). In code:
+
+```cpp
+nova::Atlas atlas = assets().atlas("gameplay");
+world().add<nova::Sprite>(e, nova::Sprite{.region = atlas.region("ui/button"), .size{200, 80}});
+```
+
+- Re-run the command whenever the art changes, and commit both output files (`.atlas` is generated — don't edit it by hand).
+- Options: `--padding 2` (pixels of repeated edge colour around each sprite, so smooth scaling never bleeds a neighbour in), `--max-size 2048` (largest atlas side), `--scale 0.5` (shrink every sprite first, e.g. to ship 2× art at 1×).
+- Group sprites that appear on screen together into one atlas (one per scene or for UI): sprites from the same atlas on the same layer draw in a single batch. If a folder doesn't fit, split it or lower `--scale`.
+- File names may use letters, digits, `_`, `.` and `-` (no spaces). Requires Pillow: `pip3 install pillow`.
+
+## 5. Releasing
 
 - **Version and build number.** iOS: `VERSION` and `BUILD_NUMBER` in `CMakeLists.txt`. Android: `versionName` and `versionCode` in `platforms/android/app/build.gradle`. Both stores reject an upload whose build number isn't higher than the last one.
 - **Android signing.** Create `platforms/android/keystore.properties` (gitignored) containing `storeFile`, `storePassword`, `keyAlias` and `keyPassword` (the store file path is relative to `platforms/android/`), then `./gradlew bundleRelease`. Never commit keystores; the `.gitignore` blocks `*.jks`, `*.keystore` and `keystore.properties`.
@@ -85,7 +105,7 @@ Moving or renaming the engine folder therefore only needs the variable or overri
 
   then `cmake --preset ios-signed`.
 
-## 5. Writing game code
+## 6. Writing game code
 
 `src/main.cpp`:
 

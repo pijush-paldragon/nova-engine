@@ -32,6 +32,16 @@ cd platforms/android && ./gradlew installDebug
 
 With several devices attached, choose one with `ANDROID_SERIAL=<serial>`.
 
+## Sprite atlases
+
+Keep each sprite as its own PNG in a folder such as `art/gameplay/`, then pack it:
+
+```bash
+python3 @ENGINE_REL_PATH@/tools/pack_atlas.py art/gameplay -o assets/gameplay
+```
+
+Load it with `assets().atlas("gameplay")` and pick sprites with `.region("<file name>")`.
+
 ## Releasing
 
 - **Version:** `VERSION` / `BUILD_NUMBER` in `CMakeLists.txt` (iOS) and `versionName` / `versionCode` in `platforms/android/app/build.gradle`. Bump the build number and `versionCode` for every store upload.

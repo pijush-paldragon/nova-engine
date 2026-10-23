@@ -27,7 +27,7 @@ GameStudio/
 │  ├─ templates/game/           what tools/new_game.py copies into a new game
 │  ├─ games/brickbreaker/       sample game: src/, assets/, tests/, platforms/ios, platforms/android
 │  ├─ third_party/              SDL, SDL_ttf, SDL_mixer, box2d, entt, doctest (git submodules, pinned tags)
-│  ├─ tools/                    new_game.py, asset generator, font fetcher
+│  ├─ tools/                    new_game.py, pack_atlas.py (sprite atlases), asset generator, font fetcher
 │  └─ docs/                     NEW_GAME.md, design specs and plans
 ├─ MyGame/                      your games: separate folders (and git repos) beside the engine
 └─ AnotherGame/
@@ -120,6 +120,8 @@ The sample's sprites, atlas, sound effects and music loop are generated (Python 
 ```bash
 python3 tools/gen_assets.py && bash tools/fetch_font.sh && python3 tools/gen_assets.py --check
 ```
+
+Your own art: pack a folder of sprite images into an atlas with `python3 tools/pack_atlas.py <folder> -o assets/<name>` (see [NEW_GAME.md](docs/NEW_GAME.md#4-sprite-atlases)).
 
 ## Upgrading a dependency
 
