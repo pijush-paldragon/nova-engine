@@ -1,0 +1,28 @@
+cmake_minimum_required(VERSION 3.24)
+project(@GAME_TARGET@ C CXX)
+
+# Locate nova-engine: -DNOVA_ENGINE_DIR=<path>, else the NOVA_ENGINE_DIR environment variable,
+# else the checkout next to this game. Every build compiles the engine's current source.
+set(NOVA_ENGINE_DIR "$ENV{NOVA_ENGINE_DIR}" CACHE PATH "Path to the nova-engine checkout")
+if(NOT NOVA_ENGINE_DIR)
+    set(NOVA_ENGINE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/@ENGINE_REL_PATH@" CACHE PATH "Path to the nova-engine checkout" FORCE)
+endif()
+if(NOT EXISTS "${NOVA_ENGINE_DIR}/cmake/Nova.cmake")
+    message(FATAL_ERROR "nova-engine not found at '${NOVA_ENGINE_DIR}'. Clone it there, or configure with "
+                        "-DNOVA_ENGINE_DIR=<path> (or set the NOVA_ENGINE_DIR environment variable).")
+endif()
+include("${NOVA_ENGINE_DIR}/cmake/Nova.cmake")
+
+nova_add_game(@GAME_TARGET@
+    SOURCES
+        src/main.cpp
+        src/scenes/title_scene.cpp
+    ASSETS assets
+    BUNDLE_ID @BUNDLE_ID@
+    DISPLAY_NAME "@GAME_NAME@"
+    ORIENTATION @ORIENTATION@
+    VERSION 1.0.0      # shown in the stores
+    BUILD_NUMBER 1)    # bump for every store upload
+
+# Game-logic tests (desktop only): ctest --preset macos-debug
+nova_add_game_tests(@GAME_TARGET@ SOURCES tests/test_game.cpp)

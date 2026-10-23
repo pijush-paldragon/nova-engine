@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<!-- Configured per game by nova_add_game (@VAR@ placeholders); $(VAR) values are filled in by Xcode. -->
+<!-- Configured per game by nova_add_game (its NOVA_* placeholders); $(VAR) values are filled in by Xcode. -->
 <plist version="1.0">
 <dict>
     <key>CFBundleDevelopmentRegion</key>
