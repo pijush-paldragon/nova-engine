@@ -84,3 +84,24 @@ function(nova_add_game name)
         endif()
     endif()
 endfunction()
+
+# nova_add_game_tests(<name> SOURCES <files...>)
+#
+# Desktop-only doctest runner for a game's logic: <name>_tests links the engine, sees the
+# game's src/ and reads assets from the game's assets/ folder. No-op when NOVA_BUILD_GAME_TESTS
+# is OFF (always on iOS/Android).
+function(nova_add_game_tests name)
+    if(NOT NOVA_BUILD_GAME_TESTS)
+        return()
+    endif()
+    cmake_parse_arguments(TESTS "" "" "SOURCES" ${ARGN})
+    set(target ${name}_tests)
+    set(support "${NOVA_ENGINE_DIR}/engine/tests/support")
+    add_executable(${target} ${TESTS_SOURCES} "${support}/game_test_main.cpp" "${support}/counting_allocator.cpp")
+    target_link_libraries(${target} PRIVATE nova doctest::doctest SDL3::SDL3)
+    target_include_directories(${target} PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
+    target_compile_options(${target} PRIVATE -fno-rtti)
+    target_compile_definitions(${target} PRIVATE NOVA_GAME_TEST_ASSET_ROOT="${CMAKE_CURRENT_SOURCE_DIR}/assets/")
+    include("${NOVA_ENGINE_DIR}/third_party/doctest/scripts/cmake/doctest.cmake")
+    doctest_discover_tests(${target})
+endfunction()

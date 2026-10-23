@@ -1,3 +1,13 @@
+# Brick Breaker works both as part of the engine repo (add_subdirectory from the root) and as
+# a top-level project (its Android build, or cmake -S games/brickbreaker), exactly like a game
+# living outside the engine.
+if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+    cmake_minimum_required(VERSION 3.24)
+    project(BrickBreaker C CXX)
+    set(NOVA_ENGINE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../.." CACHE PATH "Path to the nova-engine checkout")
+    include("${NOVA_ENGINE_DIR}/cmake/Nova.cmake")
+endif()
+
 nova_add_game(brickbreaker
     SOURCES
         src/main.cpp
@@ -12,8 +22,4 @@ nova_add_game(brickbreaker
     DISPLAY_NAME "Brick Breaker"
     ORIENTATION Portrait)
 
-# Game logic tests run inside the engine's test runner on desktop.
-if(TARGET nova_tests)
-    target_sources(nova_tests PRIVATE tests/test_level.cpp src/level.cpp)
-    target_include_directories(nova_tests PRIVATE src)
-endif()
+nova_add_game_tests(brickbreaker SOURCES tests/test_level.cpp src/level.cpp)
