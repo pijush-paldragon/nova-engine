@@ -1,5 +1,6 @@
 #include "render/renderer_backend.hpp"
 
+#include <nova/core/alloc_stats.hpp>
 #include <nova/core/log.hpp>
 #include <nova/platform/file.hpp>
 
@@ -95,6 +96,7 @@ void RendererBackend::onResize() {
 
 void RendererBackend::beginFrame() {
     drawCalls_ = 0;
+    memory::DriverAllocScope driver;
     SDL_SetRenderDrawColor(renderer_.get(), clearColor_.r, clearColor_.g, clearColor_.b, clearColor_.a);
     SDL_RenderClear(renderer_.get());
 }
@@ -109,6 +111,7 @@ void RendererBackend::submit(SpriteBatch& batch) {
     const auto* sdlVertices = reinterpret_cast<const SDL_Vertex*>(vertices.data());
     for (const BatchRun& run : batch.runs()) {
         SDL_Texture* texture = resolve(run.texture);
+        memory::DriverAllocScope driver;
         SDL_SetTextureBlendMode(texture, run.blend == BlendMode::Additive ? SDL_BLENDMODE_ADD : SDL_BLENDMODE_BLEND);
         SDL_RenderGeometry(renderer_.get(), texture, sdlVertices, int(vertices.size()),
                            indices.data() + run.firstIndex, int(run.indexCount));
@@ -117,7 +120,18 @@ void RendererBackend::submit(SpriteBatch& batch) {
 }
 
 void RendererBackend::endFrame() {
-    SDL_RenderPresent(renderer_.get());
+    {
+        memory::DriverAllocScope driver;
+        if (!screenshotPath_.empty()) {
+            if (SDL_Surface* shot = SDL_RenderReadPixels(renderer_.get(), nullptr)) {
+                if (SDL_SavePNG(shot, screenshotPath_.c_str())) log::info("Screenshot saved to %s", screenshotPath_.c_str());
+                else log::error("Screenshot failed: %s", SDL_GetError());
+                SDL_DestroySurface(shot);
+            }
+            screenshotPath_.clear();
+        }
+        SDL_RenderPresent(renderer_.get());
+    }
     drawCallsLastFrame_ = drawCalls_;
 }
 

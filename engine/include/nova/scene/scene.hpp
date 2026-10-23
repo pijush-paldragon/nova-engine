@@ -27,6 +27,7 @@ public:
     virtual void onExit() {}
     virtual void onPause() {}  // another scene was pushed on top
     virtual void onResume() {} // the scene above was popped
+    virtual void onBackground() {} // the app is going to the background (top scene only)
     virtual void onFixedUpdate(f32 dt) { (void)dt; }
     virtual void onUpdate(f32 dt) { (void)dt; }
 

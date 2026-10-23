@@ -8,6 +8,7 @@
 #include <SDL3/SDL_render.h>
 
 #include <memory>
+#include <string>
 #include <string_view>
 
 namespace nova {
@@ -23,6 +24,8 @@ public:
     void beginFrame();
     void submit(SpriteBatch& batch);
     void endFrame();
+    // Saves the next presented frame as a PNG (debug/CI aid).
+    void requestScreenshot(std::string path) { screenshotPath_ = std::move(path); }
 
     // Returns an invalid handle (and logs) if the file is missing or not a PNG.
     TextureHandle loadTexture(std::string_view path);
@@ -58,6 +61,7 @@ private:
     TextureHandle checkerboard_;
     Vec2 design_;
     u32 drawCalls_ = 0;
+    std::string screenshotPath_;
 };
 
 } // namespace nova

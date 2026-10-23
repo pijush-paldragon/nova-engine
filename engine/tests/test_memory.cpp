@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <thread>
 
 using namespace nova;
 
@@ -72,8 +73,34 @@ TEST_CASE("FrameArena aligns, resets, and survives overflow") {
     CHECK(arena.overflowBytesLastFrame() == 0); // grown primary block now fits
 }
 
-TEST_CASE("allocationCount increases monotonically") {
+TEST_CASE("allocationCount increases monotonically on the game thread") {
+    memory::markGameThread();
     auto before = memory::allocationCount();
     memory::recordAllocation();
     CHECK(memory::allocationCount() == before + 1);
+}
+
+TEST_CASE("allocationCount ignores allocations on other threads") {
+    memory::markGameThread();
+    auto before = memory::allocationCount();
+    std::thread worker([] { memory::recordAllocation(); }); // e.g. a driver's background thread
+    worker.join();
+    CHECK(memory::allocationCount() == before);
+}
+
+TEST_CASE("DriverAllocScope excludes allocations made inside driver calls") {
+    memory::markGameThread();
+    auto before = memory::allocationCount();
+    {
+        memory::DriverAllocScope driver;
+        memory::recordAllocation();
+        {
+            memory::DriverAllocScope nested;
+            memory::recordAllocation();
+        }
+        memory::recordAllocation();
+    }
+    CHECK(memory::allocationCount() == before);
+    memory::recordAllocation();
+    CHECK(memory::allocationCount() == before + 1); // counting resumes after the scope
 }
