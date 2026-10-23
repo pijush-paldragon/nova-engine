@@ -40,6 +40,7 @@ games/*/build/
 # Tools
 __pycache__/
 *.pyc
+graphify-out/
 
 # Agent scratch space (plans' working files)
 .superpowers/
