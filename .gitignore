@@ -1,0 +1,16 @@
+# Build output
+/build/
+/out/
+platforms/android/.gradle/
+platforms/android/**/build/
+platforms/android/.cxx/
+platforms/android/local.properties
+platforms/android/app/.cxx/
+*.xcodeproj/xcuserdata/
+DerivedData/
+
+# IDE / OS
+.idea/
+.vscode/
+*.iml
+.DS_Store
