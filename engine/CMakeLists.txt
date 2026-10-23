@@ -24,6 +24,6 @@ target_link_libraries(nova
 target_compile_definitions(nova PUBLIC $<$<CONFIG:Debug>:NOVA_DEBUG NOVA_TRACK_ALLOCS>)
 nova_set_warnings(nova)
 
-if(NOVA_BUILD_TESTS)
+if(NOVA_BUILD_ENGINE_TESTS)
     add_subdirectory(tests)
 endif()

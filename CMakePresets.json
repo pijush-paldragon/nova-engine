@@ -10,7 +10,8 @@
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
         "NOVA_SANITIZE": "ON",
-        "NOVA_BUILD_TESTS": "ON",
+        "NOVA_BUILD_ENGINE_TESTS": "ON",
+        "NOVA_BUILD_GAME_TESTS": "ON",
         "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
       }
     },
@@ -21,7 +22,8 @@
       "binaryDir": "${sourceDir}/build/macos-release",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
-        "NOVA_BUILD_TESTS": "OFF"
+        "NOVA_BUILD_ENGINE_TESTS": "OFF",
+        "NOVA_BUILD_GAME_TESTS": "OFF"
       }
     },
     {
@@ -34,7 +36,8 @@
         "CMAKE_OSX_DEPLOYMENT_TARGET": "15.0",
         "CMAKE_OSX_ARCHITECTURES": "arm64",
         "CMAKE_XCODE_ATTRIBUTE_ONLY_ACTIVE_ARCH": "NO",
-        "NOVA_BUILD_TESTS": "OFF"
+        "NOVA_BUILD_ENGINE_TESTS": "OFF",
+        "NOVA_BUILD_GAME_TESTS": "OFF"
       }
     }
   ],
