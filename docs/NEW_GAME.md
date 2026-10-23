@@ -1,50 +1,97 @@
-# Starting a new game on Nova
+# Making games with Nova
 
-## 1. Create the folder
+Your games live in their own folders (their own git repos) **next to** the engine, and every build compiles the engine's current source. There's no engine copy inside a game and no version to bump: improve the engine once and every game picks it up on its next build.
 
 ```
-games/mygame/
-├─ CMakeLists.txt
-├─ assets/            everything the game loads (paths are relative to this folder)
-└─ src/
-   ├─ main.cpp        configureGame()
-   └─ scenes/...
+GameStudio/
+├─ nova-engine/     the engine (this repo)
+├─ MyGame/          a game
+└─ AnotherGame/     another game
 ```
 
-`games/mygame/CMakeLists.txt`:
+## 1. Create a game
 
-```cmake
-nova_add_game(mygame
-    SOURCES src/main.cpp src/scenes/title_scene.cpp
-    ASSETS assets
-    BUNDLE_ID com.gamestudio.mygame
-    DISPLAY_NAME "My Game"
-    ORIENTATION Portrait)          # or Landscape
+From `GameStudio/`:
+
+```bash
+python3 nova-engine/tools/new_game.py MyGame --name "My Game" --bundle-id com.studio.mygame
 ```
 
-## 2. Select it
+| Option | Meaning |
+|---|---|
+| `--name` | Display name (1–30 characters; no `" < > & \ $ ;`) |
+| `--bundle-id` | App id on both stores, e.g. `com.studio.mygame` |
+| `--orientation portrait\|landscape` | Default portrait (720×1280 design size); landscape is 1280×720 |
+| `--target` | CMake/executable name; default is the name lowercased without spaces (`mygame`) |
+| `--no-git` | Skip `git init` and the initial commit |
 
-- Desktop / iOS: configure with `-DNOVA_GAME=mygame`, e.g. `cmake --preset macos-debug -DNOVA_GAME=mygame`.
-- Android: in `platforms/android/gradle.properties` set `novaGame=mygame`, `novaApplicationId=com.gamestudio.mygame` and `novaAppName=My Game`.
+The generator refuses a folder that already has files in it, and creates:
 
-## 3. Write it
+```
+MyGame/
+├─ CMakeLists.txt        finds the engine, then nova_add_game(...) and nova_add_game_tests(...)
+├─ CMakePresets.json     macos-debug, macos-release, ios
+├─ src/main.cpp          configureGame(): title, design size, orientation, first scene
+├─ src/scenes/           a starter TitleScene (logo, title, "Tap anywhere")
+├─ tests/test_game.cpp   game-logic tests (desktop)
+├─ assets/               starter atlas, sound, font (Fredoka, OFL)
+└─ platforms/
+   ├─ ios/               Info.plist.in, LaunchScreen.storyboard (yours to edit)
+   └─ android/           Gradle project: app/build.gradle holds the app's identity and signing
+```
+
+## 2. Build and run
+
+From inside the game folder:
+
+| Target | Commands |
+|---|---|
+| macOS | `cmake --preset macos-debug && cmake --build --preset macos-debug`, then `build/macos-debug/mygame.app/Contents/MacOS/mygame` |
+| Tests | `ctest --preset macos-debug` |
+| Smoke test | `build/macos-debug/mygame.app/Contents/MacOS/mygame --autoplay --frames 600 --fail-on-alloc` |
+| iOS | `cmake --preset ios && open build/ios/mygame.xcodeproj`, choose the `mygame` scheme, set your Team, Run |
+| Android | `cd platforms/android && ./gradlew installDebug` (`ANDROID_SERIAL=<serial>` with several devices) |
+
+The first build compiles SDL and the engine into the game's `build/` folder (a couple of minutes); after that builds are incremental. Nothing is ever written into the engine folder.
+
+### Where the engine is found
+
+By default at the path recorded when the game was created (`../nova-engine` for the layout above). To use another checkout:
+
+- CMake (macOS/iOS): `cmake --preset macos-debug -DNOVA_ENGINE_DIR=/path/to/nova-engine`, or set the `NOVA_ENGINE_DIR` environment variable.
+- Android: `./gradlew installDebug -PnovaEngineDir=/path/to/nova-engine`, or `novaEngineDir=...` in `platforms/android/gradle.properties`.
+
+If the engine isn't there, the build stops with a message saying where it looked.
+
+## 3. Working with the live engine
+
+- After changing the engine, rebuild **each** game and run its smoke test (`--autoplay --frames 600 --fail-on-alloc`). An engine change reaches every game immediately, including ones you haven't touched in months, so catch breakage early.
+- Brick Breaker (`nova-engine/games/brickbreaker`) is built the same way as your games and is the engine's regression test: run `ctest --preset macos-debug` and its 4200-frame smoke test in the engine repo before pushing engine changes.
+
+## 4. Releasing
+
+- **Version and build number.** iOS: `VERSION` and `BUILD_NUMBER` in `CMakeLists.txt`. Android: `versionName` and `versionCode` in `platforms/android/app/build.gradle`. Both stores reject an upload whose build number isn't higher than the last one.
+- **Android signing.** Create `platforms/android/keystore.properties` (gitignored) containing `storeFile`, `storePassword`, `keyAlias` and `keyPassword` (the store file path is relative to `platforms/android/`), then `./gradlew bundleRelease`. Never commit keystores; the `.gitignore` blocks `*.jks`, `*.keystore` and `keystore.properties`.
+- **iOS signing.** Set your Team in Xcode, then Product → Archive.
+- **Icons.** Replace `platforms/android/app/src/main/res/mipmap-*/ic_launcher.png`. For iOS, add an asset catalog in Xcode.
+
+## 5. Writing game code
+
+`src/main.cpp`:
 
 ```cpp
-// src/main.cpp
 #include "scenes/title_scene.hpp"
 #include <nova/nova.hpp>
 
 nova::GameConfig nova::configureGame() {
-    return {.title = "My Game", .designSize = {720, 1280}, .app = "mygame",
-            .clearColor = nova::Color::fromHex(0x101020FF), .firstScene = nova::makeScene<TitleScene>};
+    return {.title = "My Game", .designSize = {720, 1280}, .org = "com.studio", .app = "mygame",
+            .clearColor = nova::Color::fromHex(0x141A2EFF), .firstScene = nova::makeScene<TitleScene>};
 }
 ```
 
-```cpp
-// src/scenes/title_scene.hpp
-#pragma once
-#include <nova/nova.hpp>
+A scene with a component and a system:
 
+```cpp
 struct Spinner { float speed; };              // components are plain structs
 
 void spin(nova::SystemContext& ctx) {          // systems are plain functions
@@ -55,10 +102,10 @@ class TitleScene final : public nova::Scene {
 public:
     void onEnter() override {
         using namespace nova;
-        Atlas atlas = assets().atlas("sprites");              // assets/sprites.atlas + its PNG
+        world().reserve<Transform, Sprite, Spinner>(64);         // no allocations during play
         Entity logo = world().spawn();
         world().add<Transform>(logo, Transform{.pos{360, 640}});
-        world().add<Sprite>(logo, Sprite{.region = atlas.region("logo"), .size{256, 256}});
+        world().add<Sprite>(logo, Sprite{.region = assets().atlas("sprites").region("logo"), .size{192, 192}});
         world().add<Spinner>(logo, Spinner{1.5f});
         world().addSystem(Phase::Update, spin);
         tap_ = assets().sound("sfx/tap.wav");
@@ -70,6 +117,8 @@ private:
     nova::SoundHandle tap_;
 };
 ```
+
+Add new source files to `SOURCES` in `CMakeLists.txt`, and test files to `nova_add_game_tests(...)`.
 
 ## The rules of the engine
 

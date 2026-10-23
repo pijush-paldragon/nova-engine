@@ -1,6 +1,12 @@
 # Nova — 2D mobile engine on SDL3
 
-Nova is a small, reusable C++20 engine for 2D games on **iOS** and **Android**, with a **macOS** desktop build for fast iteration. `games/brickbreaker` is a complete sample game built on it.
+Nova is a small, reusable C++20 engine for 2D games on **iOS** and **Android**, with a **macOS** desktop build for fast iteration. Your games live in their own folders next to the engine and build against its live source; `games/brickbreaker` is the engine's sample game and test bed.
+
+```bash
+python3 nova-engine/tools/new_game.py MyGame --name "My Game" --bundle-id com.studio.mygame
+```
+
+See [docs/NEW_GAME.md](docs/NEW_GAME.md) for the full workflow.
 
 - **Rendering:** SDL3's renderer, Metal first on iOS/macOS and Vulkan first on Android, with automatic OpenGL / OpenGL ES fallback. Sprites are sorted and batched per texture, so a frame is typically 1–4 draw calls.
 - **Game model:** ECS ([EnTT](https://github.com/skypjack/entt)) behind a thin `nova::World` API, plus scenes, systems, timers and tweens.
@@ -10,15 +16,21 @@ Nova is a small, reusable C++20 engine for 2D games on **iOS** and **Android**, 
 ## Layout
 
 ```
-engine/include/nova/   public API (the only headers games may include; start with <nova/nova.hpp>)
-engine/src/            engine implementation
-engine/tests/          unit tests (doctest)
-games/brickbreaker/    sample game: src/, assets/, tests/
-platforms/ios/         Info.plist template, launch screen
-platforms/android/     Gradle project (uses SDL's Java glue straight from the submodule)
-third_party/           SDL, SDL_ttf, SDL_mixer, box2d, entt, doctest (git submodules, pinned tags)
-tools/                 asset generator and font fetcher
-docs/                  design spec, implementation plan, NEW_GAME.md
+GameStudio/
+├─ nova-engine/                 this repo
+│  ├─ cmake/Nova.cmake          the one file every game includes
+│  ├─ engine/include/nova/      public API (the only headers games may include; start with <nova/nova.hpp>)
+│  ├─ engine/src/               engine implementation
+│  ├─ engine/tests/             engine unit tests (doctest) + shared test runner support
+│  ├─ platforms/ios/            default Info.plist template and launch screen (games may override)
+│  ├─ platforms/android/        nova-app.gradle (shared Android build logic) + NovaActivity
+│  ├─ templates/game/           what tools/new_game.py copies into a new game
+│  ├─ games/brickbreaker/       sample game: src/, assets/, tests/, platforms/ios, platforms/android
+│  ├─ third_party/              SDL, SDL_ttf, SDL_mixer, box2d, entt, doctest (git submodules, pinned tags)
+│  ├─ tools/                    new_game.py, asset generator, font fetcher
+│  └─ docs/                     NEW_GAME.md, design specs and plans
+├─ MyGame/                      your games: separate folders (and git repos) beside the engine
+└─ AnotherGame/
 ```
 
 ## Prerequisites
@@ -28,7 +40,7 @@ docs/                  design spec, implementation plan, NEW_GAME.md
 - Python 3 (only to regenerate the sample assets)
 
 ```bash
-git clone --recursive <your-repo-url> Boilerplate
+git clone --recursive git@github.com:pijush-paldragon/nova-engine.git
 ```
 
 If you cloned without `--recursive`:
@@ -49,7 +61,7 @@ build/macos-debug/games/brickbreaker/brickbreaker.app/Contents/MacOS/brickbreake
 
 Debug builds run with AddressSanitizer + UndefinedBehaviorSanitizer. Use `macos-release` for an optimised build.
 
-Tests (engine + game logic):
+Tests (engine + Brick Breaker's game logic; generator tests run with `python3 -m unittest tools/test_new_game.py`):
 
 ```bash
 ctest --preset macos-debug
@@ -79,13 +91,13 @@ xcodebuild -project build/ios/Nova.xcodeproj -scheme brickbreaker -configuration
 
 ## Android
 
-Open `platforms/android` in Android Studio and press Run, or from a terminal (device or emulator attached):
+Open `games/brickbreaker/platforms/android` in Android Studio and press Run, or from a terminal (device or emulator attached):
 
 ```bash
-cd platforms/android && ./gradlew installDebug
+cd games/brickbreaker/platforms/android && ./gradlew installDebug
 ```
 
-The game to build, its application id, name and orientation are Gradle properties in `platforms/android/gradle.properties` (`novaGame`, `novaApplicationId`, `novaAppName`, `novaOrientation`). With several devices attached, pick one with `ANDROID_SERIAL=<serial>` (see `adb devices`). To test the OpenGL ES fallback on a device: `./gradlew installDebug -PnovaRenderDriver=opengles2`.
+Each game's Android project sets its identity (`applicationId`, `versionCode`/`versionName`, app name, orientation) in its own `app/build.gradle` and applies the engine's shared `platforms/android/nova-app.gradle`. With several devices attached, pick one with `ANDROID_SERIAL=<serial>` (see `adb devices`). To test the OpenGL ES fallback on a device: `./gradlew installDebug -PnovaRenderDriver=opengles2`.
 
 ## Debugging switches
 
@@ -111,8 +123,12 @@ python3 tools/gen_assets.py && bash tools/fetch_font.sh && python3 tools/gen_ass
 
 ## Upgrading a dependency
 
-Each library is a submodule pinned to a release tag. To upgrade, check out the new tag inside `third_party/<lib>`, rebuild, run the tests and the smoke test, then commit the submodule bump. Because games only see `nova::` APIs, dependency changes stay inside `engine/`.
+Each library is a submodule pinned to a release tag. To upgrade, check out the new tag inside `third_party/<lib>`, rebuild, run the tests and the smoke test, then commit the submodule bump. Because games only see `nova::` APIs, dependency changes stay inside `engine/`. Every game builds the engine from source, so rebuild and smoke-test your games after an upgrade.
 
 ## Making a new game
+
+```bash
+python3 tools/new_game.py ../MyGame --name "My Game" --bundle-id com.studio.mygame [--orientation landscape]
+```
 
 See [docs/NEW_GAME.md](docs/NEW_GAME.md).
