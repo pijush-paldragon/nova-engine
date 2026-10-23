@@ -11,8 +11,10 @@
 #include <nova/core/random.hpp>
 #include <nova/core/types.hpp>
 #include <nova/ecs/components.hpp>
+#include <nova/ecs/particles.hpp>
 #include <nova/ecs/physics.hpp>
 #include <nova/ecs/system.hpp>
+#include <nova/ecs/tween.hpp>
 #include <nova/ecs/world.hpp>
 #include <nova/input/input.hpp>
 #include <nova/physics/body_def.hpp>

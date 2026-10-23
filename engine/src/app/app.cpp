@@ -2,7 +2,9 @@
 
 #include <nova/core/alloc_stats.hpp>
 #include <nova/core/log.hpp>
+#include <nova/ecs/particles.hpp>
 #include <nova/ecs/render_bridge.hpp>
+#include <nova/ecs/tween.hpp>
 
 #include <SDL3/SDL.h>
 
@@ -139,6 +141,8 @@ void App::runFrame(f64 dt) {
     ctx.dt = f32(dt);
     top->onUpdate(f32(dt));
     top->world_.runSystems(Phase::Update, ctx);
+    updateTweens(top->world_, f32(dt));
+    updateParticles(top->world_, f32(dt), random_);
     top->timers_.update(f32(dt));
     top->camera_.update(f32(dt), random_);
 
@@ -157,6 +161,7 @@ void App::render(Scene& top) {
         f32 alpha = &scene == &top ? clock_.alpha() : 1.f;
         Vec2 origin = scene.camera_.position - scene.camera_.shakeOffset();
         collectSprites(scene.world_, batch_, alpha, origin);
+        collectParticles(scene.world_, batch_, origin);
         renderer_->submit(batch_);
     });
     if (overlay_) {
