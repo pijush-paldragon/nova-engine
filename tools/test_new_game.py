@@ -50,6 +50,10 @@ class GenerateTests(unittest.TestCase):
         self.assertTrue((out / ".gitignore").exists())
         self.assertFalse(any(p.name.endswith(".template") for p in out.rglob("*")))
 
+    def test_gitignore_protects_pack_key(self):
+        out = self.gen(self.tmp / "MyGame")
+        self.assertIn(".nova/", (out / ".gitignore").read_text().splitlines())
+
     def test_landscape_swaps_design_size(self):
         out = self.gen(self.tmp / "Wide", orientation="landscape")
         self.assertIn("{1280, 720}", (out / "src" / "main.cpp").read_text())

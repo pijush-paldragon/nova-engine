@@ -105,6 +105,38 @@ world().add<nova::Sprite>(e, nova::Sprite{.region = atlas.region("ui/button"), .
 
   then `cmake --preset ios-signed`.
 
+### Protecting assets
+
+Release builds don't ship your asset files. Every release-type build (Release, MinSizeRel,
+RelWithDebInfo; Android `release`) packs the whole `assets/` folder into one encrypted file,
+`game.pak`, and the app reads everything from it. Debug builds keep plain files, so editing
+assets stays instant. Nothing changes in game code: `assets().texture("sprites.png")` works in both.
+
+- **What it protects.** Someone unzipping your `.ipa` or `.apk` sees one opaque file: no images,
+  sounds, fonts or even file names. Each file is encrypted and authenticated
+  (XChaCha20-Poly1305), and compressed with zstd when that makes it smaller.
+- **What it doesn't.** The key has to be inside the app to decrypt, so a determined reverse
+  engineer with a debugger can still dig assets out of a running game. The pack stops casual
+  copying and asset rips, not a targeted attack. Release builds are also stripped, with symbols
+  hidden, to make that harder.
+- **The key.** The first configure creates `.nova/pack.key` and prints a warning. **Back it up**
+  (password manager, team vault). It's git-ignored on purpose. Builds stay correct without it, since
+  a new key is generated, but future content packs (DLC) for an already released app must use the
+  original key.
+- **Build servers.** Set `NOVA_PACK_KEY` to the key's 64 hex characters instead of copying the file.
+  It takes priority over `.nova/pack.key`.
+- **Testing a pack in a debug build.** Configure with `-DNOVA_PACK_ASSETS=ON`. Debug builds then
+  pack too, and keep their logging and debug switches.
+- **Tampering.** If `game.pak` is missing, modified, truncated or made with another key, a release
+  build quits immediately and silently, with no error message. A debug build logs
+  `Asset pack integrity failure: <reason>` first.
+- **Checking a pack by hand.** The build makes the tool at `build/<preset>/nova-host/nova_pack`:
+
+  ```bash
+  build/macos-release/nova-host/nova_pack verify <app>/Contents/Resources/game.pak --key-file .nova/pack.key
+  build/macos-release/nova-host/nova_pack list   <app>/Contents/Resources/game.pak --key-file .nova/pack.key
+  ```
+
 ## 6. Writing game code
 
 `src/main.cpp`:

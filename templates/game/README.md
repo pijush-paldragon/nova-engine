@@ -47,4 +47,5 @@ Load it with `assets().atlas("gameplay")` and pick sprites with `.region("<file 
 - **Version:** `VERSION` / `BUILD_NUMBER` in `CMakeLists.txt` (iOS) and `versionName` / `versionCode` in `platforms/android/app/build.gradle`. Bump the build number and `versionCode` for every store upload.
 - **Android signing:** create `platforms/android/keystore.properties` (gitignored) with `storeFile`, `storePassword`, `keyAlias`, `keyPassword`, then `./gradlew bundleRelease`.
 - **iOS signing:** set `CMAKE_XCODE_ATTRIBUTE_DEVELOPMENT_TEAM` in a `CMakeUserPresets.json` (gitignored) preset that inherits `ios`, so regenerating the Xcode project keeps it; then Product → Archive.
+- **Assets are encrypted in release builds:** they ship as one `game.pak` made with `.nova/pack.key`, created on first configure. Back that key up (it's git-ignored); on build servers set `NOVA_PACK_KEY` instead. See the engine's `docs/NEW_GAME.md`, "Protecting assets".
 - **Icons:** `platforms/ios/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png` (1024×1024, no alpha) and `platforms/android/app/src/main/res/mipmap-*/ic_launcher.png`.
