@@ -62,7 +62,7 @@ indexOff   index ciphertext + 16-byte tag
   Entries are sorted by path.
 - **Entry encryption:** `crypto_aead_lock(key, nonce, ad = path bytes, stored plaintext)`, where the stored plaintext is the zstd frame or the raw bytes. Binding to the path stops swapping entries.
 - **Nonces:**
-  - per entry: the first 24 bytes of keyed BLAKE2b-256 over `"nova-entry" || path || 0x00 || original bytes`, keyed with the pack key;
+  - per entry: the first 24 bytes of keyed BLAKE2b-256 over `"nova-entry" || path || 0x00 || compression byte || stored bytes` (what is actually encrypted, so a changed zstd output for the same file never reuses a nonce under the stable key), keyed with the pack key;
   - for the index: the same construction over `"nova-index" || index plaintext`.
 
   This makes output deterministic. Nonces only repeat for identical key, path and content, which reveals only equality.

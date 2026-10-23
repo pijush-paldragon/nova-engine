@@ -5,7 +5,7 @@ set(NOVA_TEST_PACK "${CMAKE_BINARY_DIR}/test-pack/game.pak")
 file(GLOB_RECURSE _nova_test_pack_inputs CONFIGURE_DEPENDS "${NOVA_ENGINE_DIR}/games/brickbreaker/assets/*")
 add_custom_command(OUTPUT "${NOVA_TEST_PACK}"
     COMMAND ${NOVA_PACK_TOOL_UPDATE}
-    COMMAND "${NOVA_PACK_TOOL}" pack "${NOVA_ENGINE_DIR}/games/brickbreaker/assets" "${NOVA_TEST_PACK}"
+    COMMAND "${CMAKE_COMMAND}" -E env --unset=NOVA_PACK_KEY "${NOVA_PACK_TOOL}" pack "${NOVA_ENGINE_DIR}/games/brickbreaker/assets" "${NOVA_TEST_PACK}"
             --key-file "${CMAKE_CURRENT_SOURCE_DIR}/data/test.key"
     DEPENDS ${_nova_test_pack_inputs} ${NOVA_PACK_TOOL_SOURCES} "${CMAKE_CURRENT_SOURCE_DIR}/data/test.key"
     COMMENT "Packing test assets"

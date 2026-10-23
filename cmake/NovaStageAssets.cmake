@@ -5,6 +5,7 @@
 #   -DDEST=<dir> bundle Resources folder (or Android pack folder); XCODE: the resources folder of
 #                the bundle Xcode is building ($TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH)
 #   -DTOOL=<nova_pack> -DKEYFILE=<key file>   (pack mode)
+#   -DASSET_LIST=<hash>  ignored here; it changes the command when files are added or renamed
 #
 # DEST/.nova-staged lists what the previous run staged; those files are removed first, so
 # switching between modes (or deleting an asset) never leaves stale files in the bundle.
@@ -23,10 +24,10 @@ if(DEST STREQUAL "XCODE")
 endif()
 set(manifest "${DEST}/.nova-staged")
 
-if(EXISTS "${manifest}")
-    file(STRINGS "${manifest}" previous)
+# Removes DEST/<rel> for each path, then the folders that left empty (deepest first).
+function(unstage)
     set(dirs "")
-    foreach(rel IN LISTS previous)
+    foreach(rel IN LISTS ARGN)
         file(REMOVE "${DEST}/${rel}")
         get_filename_component(dir "${rel}" DIRECTORY)
         while(dir)
@@ -34,21 +35,34 @@ if(EXISTS "${manifest}")
             get_filename_component(dir "${dir}" DIRECTORY)
         endwhile()
     endforeach()
-    # Remove folders the staged files left empty, deepest first.
     list(REMOVE_DUPLICATES dirs)
     list(SORT dirs ORDER DESCENDING)
     foreach(dir IN LISTS dirs)
         file(GLOB left "${DEST}/${dir}/*")
         file(GLOB hidden "${DEST}/${dir}/.*")
-        if(NOT left AND NOT hidden)
+        if(IS_DIRECTORY "${DEST}/${dir}" AND NOT left AND NOT hidden)
             file(REMOVE_RECURSE "${DEST}/${dir}")
         endif()
     endforeach()
+endfunction()
+
+if(EXISTS "${manifest}")
+    file(STRINGS "${manifest}" previous ENCODING UTF-8)
+    unstage(${previous})
     file(REMOVE "${manifest}")
 endif()
 file(MAKE_DIRECTORY "${DEST}")
 
+# Nothing in the build may swap the key: KEYFILE is the key resolved at configure time, the one
+# compiled into the game, and nova_pack would otherwise prefer $NOVA_PACK_KEY.
+unset(ENV{NOVA_PACK_KEY})
+
+file(GLOB_RECURSE files LIST_DIRECTORIES false RELATIVE "${SRC}" "${SRC}/*")
+list(FILTER files EXCLUDE REGEX "(^|/)\\.") # dot-files and dot-folders, like nova_pack
+
 if(PACK)
+    # Loose copies with no manifest (bundles from before staging) must not ship next to the pack.
+    unstage(${files})
     execute_process(COMMAND "${TOOL}" pack "${SRC}" "${DEST}/game.pak" --key-file "${KEYFILE}"
                     RESULT_VARIABLE rc)
     if(NOT rc EQUAL 0)
@@ -56,13 +70,8 @@ if(PACK)
     endif()
     file(WRITE "${manifest}" "game.pak\n")
 else()
-    file(GLOB_RECURSE files LIST_DIRECTORIES false RELATIVE "${SRC}" "${SRC}/*")
     set(staged "")
     foreach(rel IN LISTS files)
-        # Skip dot-files and anything inside dot-folders, like nova_pack does.
-        if(rel MATCHES "(^|/)\\.")
-            continue()
-        endif()
         get_filename_component(dir "${rel}" DIRECTORY)
         file(COPY "${SRC}/${rel}" DESTINATION "${DEST}/${dir}")
         string(APPEND staged "${rel}\n")

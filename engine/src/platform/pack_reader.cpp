@@ -23,8 +23,7 @@ std::unique_ptr<PackReader> PackReader::open(SDL_IOStream* io, const pack::Key& 
         return nullptr;
     }
     const uint64_t size = uint64_t(fileSize);
-    if (header.indexOff < pack::kHeaderSize || header.indexOff > size ||
-        header.indexSize + pack::kTagSize != size - header.indexOff) {
+    if (!pack::indexInRange(header, size)) {
         error = "index out of range";
         return nullptr;
     }

@@ -150,8 +150,7 @@ int pack(const fs::path& assets, const fs::path& outPak, const std::optional<fs:
             e.compression = kZstd;
             stored = &packed;
         }
-        e.nonce = deriveNonce(*key, "nova-entry", reinterpret_cast<const uint8_t*>(rel.data()), rel.size(),
-                              original->data(), original->size());
+        e.nonce = entryNonce(*key, rel, e.compression, stored->data(), stored->size());
         e.dataOff = kHeaderSize + data.size();
         e.storedSize = uint32_t(stored->size());
         size_t at = data.size();
@@ -205,8 +204,7 @@ int inspect(const fs::path& pakPath, const std::optional<fs::path>& keyFile, boo
     if (!pak) return fail("can't read " + pakPath.string());
     Header header;
     if (pak->size() < kHeaderSize || !decodeHeader(pak->data(), header)) return fail("not a Nova pack (bad header)");
-    if (header.indexOff > pak->size() || header.indexSize + kTagSize > pak->size() - header.indexOff)
-        return fail("damaged pack (index out of range)");
+    if (!indexInRange(header, pak->size())) return fail("damaged pack (index out of range)");
     std::vector<uint8_t> index(header.indexSize);
     const uint8_t* cipher = pak->data() + header.indexOff;
     if (!open(*key, header.indexNonce, pak->data(), kHeaderSize, cipher, header.indexSize, cipher + header.indexSize,

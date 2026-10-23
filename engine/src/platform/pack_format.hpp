@@ -42,6 +42,9 @@ struct Header {
 };
 
 std::array<uint8_t, kHeaderSize> encodeHeader(const Header& header);
+// The index (plus its tag) sits after the header and ends exactly at the end of a fileSize-byte
+// pack. Overflow-safe: the header is not authenticated yet when this is checked.
+bool indexInRange(const Header& header, uint64_t fileSize);
 // False on wrong magic/version or non-zero reserved bytes.
 bool decodeHeader(const uint8_t* bytes, Header& out);
 
@@ -61,6 +64,11 @@ bool decodeIndex(const uint8_t* data, size_t size, std::vector<Entry>& out);
 // First 24 bytes of keyed BLAKE2b-256 over domain || a || 0x00 || b.
 Nonce deriveNonce(const Key& key, std::string_view domain, const uint8_t* a, size_t aLen, const uint8_t* b,
                   size_t bLen);
+
+// An entry's nonce: deriveNonce over "nova-entry", the path, then the compression byte and the
+// stored (encrypted) bytes. Binding the stored bytes means the same key never seals two different
+// plaintexts under one nonce, even if zstd output for the same file changes between releases.
+Nonce entryNonce(const Key& key, std::string_view path, uint8_t compression, const uint8_t* stored, size_t size);
 
 void seal(const Key& key, const Nonce& nonce, const uint8_t* ad, size_t adLen, const uint8_t* plain, size_t size,
           uint8_t* cipherOut, uint8_t tagOut[kTagSize]);

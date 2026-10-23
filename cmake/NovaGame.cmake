@@ -141,14 +141,17 @@ endfunction()
 
 # Stages <assets_dir> into <dest> after <target> links: a plain copy in dev builds, one encrypted
 # game.pak in pack builds (NovaStageAssets.cmake). Any asset or key change relinks the target,
-# which re-stages.
+# which re-stages: edits through LINK_DEPENDS, and added/removed/renamed files (whose mtime may be
+# older than the binary) through a hash of the file list in the command, which Ninja tracks.
 function(_nova_stage_assets target assets_dir dest key_file)
     file(GLOB_RECURSE asset_files CONFIGURE_DEPENDS "${assets_dir}/*")
     set_property(TARGET ${target} APPEND PROPERTY LINK_DEPENDS ${asset_files} "${key_file}" ${NOVA_PACK_TOOL_SOURCES})
+    string(SHA256 asset_list_hash "${asset_files}")
     add_custom_command(TARGET ${target} POST_BUILD
         COMMAND ${NOVA_PACK_TOOL_UPDATE}
         COMMAND "${CMAKE_COMMAND}" "-DPACK=${NOVA_PACK_MODE}" "-DSRC=${assets_dir}" "-DDEST=${dest}"
-                "-DTOOL=${NOVA_PACK_TOOL}" "-DKEYFILE=${key_file}" -P "${NOVA_ENGINE_DIR}/cmake/NovaStageAssets.cmake"
+                "-DTOOL=${NOVA_PACK_TOOL}" "-DKEYFILE=${key_file}" "-DASSET_LIST=${asset_list_hash}"
+                -P "${NOVA_ENGINE_DIR}/cmake/NovaStageAssets.cmake"
         COMMENT "Staging assets for ${target}"
         VERBATIM)
 endfunction()

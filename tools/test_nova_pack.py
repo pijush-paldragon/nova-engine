@@ -134,6 +134,16 @@ class NovaPackTests(unittest.TestCase):
                 path.write_bytes(bytes(bad))
                 self.assertEqual(run("verify", path, "--key-file", self.key).returncode, 1)
 
+    def test_verify_rejects_overflowing_header_lengths(self):
+        bad = bytearray(self.pack().read_bytes())
+        bad[16:24] = struct.pack("<Q", len(bad))
+        bad[24:32] = struct.pack("<Q", 2**64 - 16)
+        path = self.tmp / "hostile.pak"
+        path.write_bytes(bytes(bad))
+        r = run("verify", path, "--key-file", self.key)
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("out of range", r.stderr)
+
     def test_wrong_key_fails_and_env_key_takes_precedence(self):
         pak = self.pack()
         other = self.tmp / "other.key"
@@ -167,7 +177,8 @@ class NovaPackTests(unittest.TestCase):
         out = self.tmp / "shared" / "game.pak"
         out.parent.mkdir()
         cmd = [str(tool_path()), "pack", str(self.assets), str(out), "--key-file", str(self.key)]
-        procs = [subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE) for _ in range(2)]
+        env = {k: v for k, v in os.environ.items() if k != "NOVA_PACK_KEY"}
+        procs = [subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env) for _ in range(2)]
         for p in procs:
             _, err = p.communicate()
             self.assertEqual(p.returncode, 0, err)

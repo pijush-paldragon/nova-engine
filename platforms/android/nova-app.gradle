@@ -52,7 +52,7 @@ android {
         assets.srcDirs = []
     }
     sourceSets.debug.assets.srcDirs = ["${gameRoot}/assets"]
-    sourceSets.release.assets.srcDirs = [releasePackDir]
+    sourceSets.release.assets.srcDirs = [] // the pack arrives as generated assets (below)
 
     androidResources {
         noCompress 'pak' // read with seeks; already compressed and encrypted
@@ -68,8 +68,33 @@ android {
     }
 }
 
-// The pack is written by the native build, so assets merge only after it.
-android.applicationVariants.all { variant ->
-    def name = variant.name.capitalize()
-    tasks.named("merge${name}Assets").configure { dependsOn("externalNativeBuild${name}") }
+// Copies the game.pak the native build wrote into a declared output folder, which release builds
+// register as generated assets. Gradle then knows exactly when the pack changes, and wires every
+// task that reads release assets (merge, lint, ...) after the native build.
+abstract class NovaPackAssets extends DefaultTask {
+    @InputDirectory abstract DirectoryProperty getPackDir()
+    @OutputDirectory abstract DirectoryProperty getOutputDir()
+
+    @TaskAction void copyPack() {
+        def out = outputDir.get().asFile
+        out.deleteDir()
+        out.mkdirs()
+        def pak = packDir.file('game.pak').get().asFile
+        if (!pak.exists()) throw new GradleException("No game.pak in ${packDir.get().asFile}; the native build should have made it")
+        java.nio.file.Files.copy(pak.toPath(), new File(out, 'game.pak').toPath())
+    }
 }
+
+def novaPackAssets = tasks.register('novaReleasePackAssets', NovaPackAssets) {
+    packDir.set(file(releasePackDir))
+    outputDir.set(layout.buildDirectory.dir('generated/nova-pack/release'))
+    dependsOn 'externalNativeBuildRelease'
+}
+
+androidComponents {
+    onVariants(selector().withBuildType('release')) { variant ->
+        variant.sources.assets.addGeneratedSourceDirectory(novaPackAssets, { it.outputDir })
+    }
+}
+
+tasks.matching { it.name == 'externalNativeBuildRelease' }.configureEach { outputs.dir(releasePackDir) }

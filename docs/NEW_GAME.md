@@ -124,11 +124,14 @@ assets stays instant. Nothing changes in game code: `assets().texture("sprites.p
   a new key is generated, but future content packs (DLC) for an already released app must use the
   original key.
 - **Build servers.** Set `NOVA_PACK_KEY` to the key's 64 hex characters instead of copying the file.
-  It takes priority over `.nova/pack.key`.
+  It takes priority over `.nova/pack.key`, and it is read when CMake **configures**: the key found
+  then is compiled into the game and used to pack it. Changing the variable later doesn't
+  change the key until you reconfigure, for example with `cmake --preset macos-release --fresh`.
 - **Testing a pack in a debug build.** Configure with `-DNOVA_PACK_ASSETS=ON`. Debug builds then
   pack too, and keep their logging and debug switches.
-- **Tampering.** If `game.pak` is missing, modified, truncated or made with another key, a release
-  build quits immediately and silently, with no error message. A debug build logs
+- **Tampering.** If `game.pak` is missing, truncated, made with another key or has a damaged index,
+  a release build quits silently at startup, with no error message. If one asset inside it was
+  modified, the game quits the same way when that asset is first loaded. A debug build logs
   `Asset pack integrity failure: <reason>` first.
 - **Checking a pack by hand.** The build makes the tool at `build/<preset>/nova-host/nova_pack`:
 

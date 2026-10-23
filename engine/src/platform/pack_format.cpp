@@ -43,6 +43,11 @@ std::array<uint8_t, kHeaderSize> encodeHeader(const Header& h) {
     return out; // bytes 56..63 stay zero (reserved)
 }
 
+bool indexInRange(const Header& h, uint64_t fileSize) {
+    return h.indexOff >= kHeaderSize && h.indexOff <= fileSize && h.indexSize <= fileSize - h.indexOff &&
+           fileSize - h.indexOff - h.indexSize == kTagSize;
+}
+
 bool decodeHeader(const uint8_t* b, Header& out) {
     if (std::memcmp(b, kMagic, 8) != 0 || get32(b + 8) != kVersion || get32(b + 12) != 0) return false;
     for (size_t i = 56; i < kHeaderSize; ++i) {
@@ -111,6 +116,23 @@ Nonce deriveNonce(const Key& key, std::string_view domain, const uint8_t* a, siz
     const uint8_t zero = 0;
     crypto_blake2b_update(&ctx, &zero, 1);
     crypto_blake2b_update(&ctx, b, bLen);
+    uint8_t hash[32];
+    crypto_blake2b_final(&ctx, hash);
+    Nonce nonce;
+    std::memcpy(nonce.data(), hash, kNonceSize);
+    crypto_wipe(hash, sizeof hash);
+    return nonce;
+}
+
+Nonce entryNonce(const Key& key, std::string_view path, uint8_t compression, const uint8_t* stored, size_t size) {
+    crypto_blake2b_ctx ctx;
+    crypto_blake2b_keyed_init(&ctx, 32, key.data(), key.size());
+    static constexpr char kDomain[] = "nova-entry";
+    crypto_blake2b_update(&ctx, reinterpret_cast<const uint8_t*>(kDomain), sizeof kDomain - 1);
+    crypto_blake2b_update(&ctx, reinterpret_cast<const uint8_t*>(path.data()), path.size());
+    const uint8_t sep[2] = {0, compression};
+    crypto_blake2b_update(&ctx, sep, sizeof sep);
+    crypto_blake2b_update(&ctx, stored, size);
     uint8_t hash[32];
     crypto_blake2b_final(&ctx, hash);
     Nonce nonce;

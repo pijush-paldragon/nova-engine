@@ -4,6 +4,7 @@
 Uses the nova_pack tool from test_nova_pack's helper (built once, or $NOVA_PACK_TOOL).
 """
 
+import os
 import subprocess
 import sys
 import tempfile
@@ -30,6 +31,9 @@ class StageAssetsTests(unittest.TestCase):
         (self.src / "a.png").write_bytes(b"\x89PNG not really")
         (self.src / "sfx" / "b.wav").write_bytes(b"RIFF not really")
         (self.src / ".DS_Store").write_bytes(b"skip me")
+        (self.src / "über ß.txt").write_text("unicode")
+        (self.src / "müsic").mkdir()
+        (self.src / "müsic" / "ñ.wav").write_bytes(b"RIFF")
         self.dest = self.tmp / "Bundle.app" / "Resources"
         self.dest.mkdir(parents=True)
         (self.dest / "Info.plist").write_text("unrelated")
@@ -39,11 +43,15 @@ class StageAssetsTests(unittest.TestCase):
     def tearDown(self):
         self._tmp.cleanup()
 
-    def stage(self, pack, keyfile=None):
+    LOOSE = [".nova-staged", "Info.plist", "a.png", "müsic/ñ.wav", "sfx/b.wav", "über ß.txt"]
+
+    def stage(self, pack, keyfile=None, env=None):
+        full_env = {k: v for k, v in os.environ.items() if k != "NOVA_PACK_KEY"}
+        full_env.update(env or {})
         return subprocess.run(
             ["cmake", f"-DPACK={1 if pack else 0}", f"-DSRC={self.src}", f"-DDEST={self.dest}",
              f"-DTOOL={self.tool}", f"-DKEYFILE={keyfile or self.key}", "-P", str(SCRIPT)],
-            capture_output=True, text=True)
+            capture_output=True, text=True, env=full_env)
 
     def files(self):
         return sorted(p.relative_to(self.dest).as_posix() for p in self.dest.rglob("*") if p.is_file())
@@ -54,8 +62,9 @@ class StageAssetsTests(unittest.TestCase):
     def test_loose_mode_copies_tree_and_writes_manifest(self):
         r = self.stage(pack=False)
         self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertEqual(self.files(), [".nova-staged", "Info.plist", "a.png", "sfx/b.wav"])
-        self.assertEqual(sorted(self.manifest()), ["a.png", "sfx/b.wav"])
+        self.assertEqual(self.files(), self.LOOSE)
+        self.assertEqual(sorted((self.dest / ".nova-staged").read_text(encoding="utf-8").splitlines()),
+                         ["a.png", "müsic/ñ.wav", "sfx/b.wav", "über ß.txt"])
         self.assertEqual((self.dest / "a.png").read_bytes(), b"\x89PNG not really")
 
     def test_pack_mode_writes_only_pack(self):
@@ -71,15 +80,32 @@ class StageAssetsTests(unittest.TestCase):
         self.assertEqual(self.stage(pack=True).returncode, 0)
         self.assertEqual(self.files(), [".nova-staged", "Info.plist", "game.pak"])
         self.assertFalse((self.dest / "sfx").exists())  # emptied folders go too
+        self.assertFalse((self.dest / "müsic").exists())
         self.assertEqual(self.stage(pack=False).returncode, 0)
-        self.assertEqual(self.files(), [".nova-staged", "Info.plist", "a.png", "sfx/b.wav"])
+        self.assertEqual(self.files(), self.LOOSE)
         self.assertEqual((self.dest / "Info.plist").read_text(), "unrelated")
 
     def test_removed_asset_is_unstaged(self):
         self.assertEqual(self.stage(pack=False).returncode, 0)
         (self.src / "a.png").unlink()
         self.assertEqual(self.stage(pack=False).returncode, 0)
-        self.assertEqual(self.files(), [".nova-staged", "Info.plist", "sfx/b.wav"])
+        self.assertEqual(self.files(), [f for f in self.LOOSE if f != "a.png"])
+
+    def test_pack_mode_removes_unmanifested_loose_assets(self):
+        # Bundles built before staging existed have loose assets but no manifest.
+        (self.dest / "sfx").mkdir()
+        (self.dest / "a.png").write_bytes(b"old")
+        (self.dest / "sfx" / "b.wav").write_bytes(b"old")
+        self.assertEqual(self.stage(pack=True).returncode, 0)
+        self.assertEqual(self.files(), [".nova-staged", "Info.plist", "game.pak"])
+
+    def test_build_time_env_key_does_not_override_key_file(self):
+        # The game embeds the key resolved at configure time (KEYFILE); the pack must match it.
+        other = "ab" * 32
+        r = self.stage(pack=True, env={"NOVA_PACK_KEY": other})
+        self.assertEqual(r.returncode, 0, r.stderr)
+        v = test_nova_pack.run("verify", self.dest / "game.pak", "--key-file", self.key)
+        self.assertEqual(v.returncode, 0, v.stderr)
 
     def test_tool_failure_is_fatal(self):
         r = self.stage(pack=True, keyfile=self.tmp / "missing.key")

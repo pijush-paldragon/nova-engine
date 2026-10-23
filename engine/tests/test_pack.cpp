@@ -93,7 +93,7 @@ std::vector<std::string> looseAssets() {
 
 int runTool(const std::string& args, const char* envKey = nullptr) {
     std::string cmd;
-    if (envKey) cmd += std::string("NOVA_PACK_KEY=") + envKey + " ";
+    cmd += envKey ? std::string("NOVA_PACK_KEY=") + envKey + " " : std::string("env -u NOVA_PACK_KEY ");
     cmd += "\"" NOVA_PACK_TOOL "\" " + args;
     return std::system(cmd.c_str());
 }
@@ -232,6 +232,32 @@ TEST_CASE("Pack detects a flipped byte in header, index and entry data") {
         REQUIRE(failures().size() == 1);
         CHECK(failures()[0].find("entry") != std::string::npos);
     }
+}
+
+TEST_CASE("Pack rejects header lengths that overflow") {
+    PackFixture fx;
+    std::vector<char> bytes = readBytes(kPack);
+    // indexOff = file size, indexSize = 2^64 - 16: indexSize + tag wraps to 0.
+    uint64_t off = bytes.size(), len = ~uint64_t(0) - 15;
+    for (int i = 0; i < 8; ++i) {
+        bytes[16 + size_t(i)] = char(off >> (8 * i));
+        bytes[24 + size_t(i)] = char(len >> (8 * i));
+    }
+    writeBytes(fx.tempDir() / "game.pak", bytes);
+    setAssetRoot(rootOf(fx.tempDir()));
+    CHECK(mountPack() == MountResult::Corrupt);
+    CHECK(failures().size() == 1);
+}
+
+TEST_CASE("Entry nonce depends on the stored bytes and how they are stored") {
+    pack::Key key{};
+    key[0] = 7;
+    const uint8_t a[] = {1, 2, 3}, b[] = {1, 2, 4};
+    pack::Nonce raw = pack::entryNonce(key, "x.wav", pack::kRaw, a, sizeof a);
+    CHECK(raw == pack::entryNonce(key, "x.wav", pack::kRaw, a, sizeof a)); // deterministic
+    CHECK(raw != pack::entryNonce(key, "x.wav", pack::kZstd, a, sizeof a));
+    CHECK(raw != pack::entryNonce(key, "x.wav", pack::kRaw, b, sizeof b));
+    CHECK(raw != pack::entryNonce(key, "y.wav", pack::kRaw, a, sizeof a));
 }
 
 TEST_CASE("Pack detects truncation") {

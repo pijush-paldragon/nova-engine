@@ -30,12 +30,21 @@ else()
     set(_nova_host_gen -G "Unix Makefiles")
 endif()
 
+# Xcode build phases export SDKROOT and *_DEPLOYMENT_TARGET, which clang obeys; rebuilding the
+# tool from an iOS build phase must not retarget it, so they are cleared and macOS is pinned.
+set(_nova_host_env "${CMAKE_COMMAND}" -E env --unset=SDKROOT --unset=IPHONEOS_DEPLOYMENT_TARGET
+    --unset=TVOS_DEPLOYMENT_TARGET --unset=WATCHOS_DEPLOYMENT_TARGET --unset=XROS_DEPLOYMENT_TARGET)
+set(_nova_host_platform "")
+if(CMAKE_HOST_APPLE)
+    set(_nova_host_platform -DCMAKE_OSX_SYSROOT=macosx)
+endif()
+
 execute_process(
-    COMMAND "${CMAKE_COMMAND}" -S "${_nova_tool_src}" -B "${_nova_host_dir}" ${_nova_host_gen}
-            -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=
+    COMMAND ${_nova_host_env} "${CMAKE_COMMAND}" -S "${_nova_tool_src}" -B "${_nova_host_dir}" ${_nova_host_gen}
+            -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE= ${_nova_host_platform}
     RESULT_VARIABLE _nova_host_result OUTPUT_VARIABLE _nova_host_out ERROR_VARIABLE _nova_host_out)
 if(_nova_host_result EQUAL 0)
-    execute_process(COMMAND "${CMAKE_COMMAND}" --build "${_nova_host_dir}"
+    execute_process(COMMAND ${_nova_host_env} "${CMAKE_COMMAND}" --build "${_nova_host_dir}"
         RESULT_VARIABLE _nova_host_result OUTPUT_VARIABLE _nova_host_out ERROR_VARIABLE _nova_host_out)
 endif()
 if(NOT _nova_host_result EQUAL 0)
@@ -48,7 +57,7 @@ set(NOVA_PACK_TOOL_SOURCES
     "${_nova_tool_src}/CMakeLists.txt"
     "${NOVA_ENGINE_DIR}/engine/src/platform/pack_format.cpp"
     "${NOVA_ENGINE_DIR}/engine/src/platform/pack_format.hpp")
-set(NOVA_PACK_TOOL_UPDATE "${CMAKE_COMMAND}" --build "${_nova_host_dir}")
+set(NOVA_PACK_TOOL_UPDATE ${_nova_host_env} "${CMAKE_COMMAND}" --build "${_nova_host_dir}")
 message(STATUS "nova_pack: ${NOVA_PACK_TOOL}")
 
 # Resolves the pack key of the game in the current source dir and generates the C++ file that
