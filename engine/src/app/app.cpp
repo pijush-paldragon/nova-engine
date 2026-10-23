@@ -1,6 +1,7 @@
 #include "app/app.hpp"
 
 #include <nova/core/alloc_stats.hpp>
+#include <nova/core/assert.hpp>
 #include <nova/core/log.hpp>
 #include <nova/ecs/particles.hpp>
 #include <nova/ecs/render_bridge.hpp>
@@ -253,6 +254,10 @@ bool App::teardownAndCheckLeaks() {
     if (scenes_) scenes_->clear();
     services_.assets = nullptr;
     assets_.reset();
+    if (u32 failures = detail::assertFailureCount(); failures > 0) {
+        log::error("Run had %u failed assertion(s)", failures);
+        return false;
+    }
     u32 textures = renderer_ ? renderer_->liveTextureCount() : 0;
     u32 sounds = audio_ ? audio_->liveAudioCount() : 0;
     u32 fonts = text_ ? text_->liveFontCount() : 0;

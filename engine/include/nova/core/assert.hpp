@@ -1,8 +1,14 @@
 #pragma once
 
+#include <nova/core/types.hpp>
+
 namespace nova::detail {
-// Logs the failure and, in debug builds, breaks into the debugger.
+// Logs and counts the failure and, in debug builds, breaks into the debugger.
 void assertFailed(const char* expr, const char* msg, const char* file, int line);
+// Number of failed asserts/verifies so far; frame-limited runs (smoke tests) fail if non-zero.
+u32 assertFailureCount();
+// The unit-test runner turns breaking off so it can exercise failure paths.
+void setAssertBreakEnabled(bool enabled);
 } // namespace nova::detail
 
 // Debug-only check; compiled out in release.

@@ -31,6 +31,9 @@
     <true/>
     <key>UIViewControllerBasedStatusBarAppearance</key>
     <false/>
+    <!-- Allow ProMotion displays to run at their native 120 Hz (iPhone otherwise caps at 60 Hz). -->
+    <key>CADisableMinimumFrameDurationOnPhone</key>
+    <true/>
     <key>UIApplicationSupportsIndirectInputEvents</key>
     <true/>
     <key>UIRequiredDeviceCapabilities</key>

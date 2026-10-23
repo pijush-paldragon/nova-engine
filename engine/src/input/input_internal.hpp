@@ -21,7 +21,7 @@ private:
     Pointer* find(u64 id);
     void press(u64 id, Vec2 pos);
     void move(u64 id, Vec2 pos, Vec2 delta);
-    void release(u64 id, Vec2 pos);
+    void release(u64 id, Vec2 pos, bool canTap);
     void setKey(Key k, bool down);
 };
 

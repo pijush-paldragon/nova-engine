@@ -1,4 +1,5 @@
 #include <doctest/doctest.h>
+#include <nova/core/assert.hpp>
 #include <nova/core/math.hpp>
 #include <nova/core/random.hpp>
 #include <nova/core/result.hpp>
@@ -61,4 +62,11 @@ TEST_CASE("Color fromHex and Random determinism") {
         CHECK(n >= 3);
         CHECK(n <= 5);
     }
+}
+
+TEST_CASE("Assert failures are counted so frame-limited runs can fail on them") {
+    nova::u32 before = nova::detail::assertFailureCount();
+    CHECK(!NOVA_VERIFY(1 + 1 == 3, "deliberate failure"));
+    CHECK(NOVA_VERIFY(true, "fine"));
+    CHECK(nova::detail::assertFailureCount() == before + 1);
 }

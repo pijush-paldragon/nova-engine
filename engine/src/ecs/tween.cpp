@@ -75,6 +75,8 @@ void updateTweens(World& world, f32 dt) {
     for (auto [e, tw] : world.view<Tween>()) {
         Transform* t = world.tryGet<Transform>(e);
         if (!t) continue;
+        // Fields are public (aggregate init), so guard here too: a zero duration would never end a leg.
+        if (!(tw.duration >= 1e-4f)) tw.duration = 1e-4f;
         tw.elapsed += dt;
         const i32 legs = totalLegs(tw);
         bool finished = false;

@@ -1,4 +1,5 @@
 #include <doctest/doctest.h>
+#include <nova/core/alloc_stats.hpp>
 #include <nova/ecs/world.hpp>
 #include <nova/text/text.hpp>
 #include <text/text_backend.hpp>
@@ -91,3 +92,32 @@ TEST_CASE("Text label destroy releases TTF_Text and pixel-scale change rebuilds"
     CHECK(text.liveTextCount() == 0);
     text.unloadFont(*font);
 }
+
+#if defined(NOVA_TRACK_ALLOCS)
+TEST_CASE("Text adding labels after warm-up does not allocate in engine code") {
+    SoftwareRenderer sw;
+    auto created = TextBackend::create(sw.renderer);
+    REQUIRE(created.ok());
+    TextBackend& text = *created.value();
+    auto font = text.loadFont("fonts/Fredoka.ttf@32");
+    REQUIRE(font.has_value());
+    {
+        World w;
+        w.reserve<Transform, TextLabel>(256);
+        auto first = w.spawn();
+        w.add<Transform>(first);
+        w.add<TextLabel>(first, TextLabel{.font = *font}).set("0123456789 Score");
+        text.collectAndDraw(w, kFit, {0, 0}); // warm-up: glyphs, first TextCache
+        memory::markGameThread();
+        auto before = memory::allocationCount();
+        for (int i = 0; i < 100; ++i) { // e.g. floating "+10" labels spawned during play
+            auto e = w.spawn();
+            w.add<Transform>(e, Transform{.pos{float(i), 50}});
+            w.add<TextLabel>(e, TextLabel{.font = *font}).set("+10");
+        }
+        text.collectAndDraw(w, kFit, {0, 0});
+        CHECK(memory::allocationCount() == before);
+    }
+    text.unloadFont(*font);
+}
+#endif

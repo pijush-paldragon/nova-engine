@@ -81,7 +81,8 @@ void InputBackend::handleEvent(const SDL_Event& e, const ScreenFit& fit) {
             } else if (e.type == SDL_EVENT_FINGER_MOTION) {
                 move(id, pos, {e.tfinger.dx * fit.windowPx.x / fit.scale, e.tfinger.dy * fit.windowPx.y / fit.scale});
             } else {
-                release(id, pos);
+                // A cancelled touch (system gesture, incoming call) ends the pointer but is never a tap.
+                release(id, pos, e.type == SDL_EVENT_FINGER_UP);
             }
             break;
         }
@@ -90,7 +91,7 @@ void InputBackend::handleEvent(const SDL_Event& e, const ScreenFit& fit) {
             if (e.button.button == SDL_BUTTON_LEFT) {
                 Vec2 pos = pixelsToDesign({e.button.x * fit.pixelDensity, e.button.y * fit.pixelDensity}, fit);
                 if (e.type == SDL_EVENT_MOUSE_BUTTON_DOWN) press(kMousePointerId, pos);
-                else release(kMousePointerId, pos);
+                else release(kMousePointerId, pos, true);
             }
             break;
         case SDL_EVENT_MOUSE_MOTION:
@@ -144,13 +145,13 @@ void InputBackend::move(u64 id, Vec2 pos, Vec2 delta) {
     }
 }
 
-void InputBackend::release(u64 id, Vec2 pos) {
+void InputBackend::release(u64 id, Vec2 pos, bool canTap) {
     Pointer* p = find(id);
     if (!p) return;
     p->pos = pos;
     p->held = false;
     p->released = true;
-    if (p->heldTime < kTapMaxSeconds && (p->pos - p->startPos).length() < kTapMaxTravel) tapped_ = true;
+    if (canTap && p->heldTime < kTapMaxSeconds && (p->pos - p->startPos).length() < kTapMaxTravel) tapped_ = true;
 }
 
 void InputBackend::setKey(Key k, bool down) {

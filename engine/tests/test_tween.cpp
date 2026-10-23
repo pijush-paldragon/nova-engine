@@ -94,3 +94,17 @@ TEST_CASE("Particles continuous rate emits over time") {
     updateParticles(w, 1.f, r);
     CHECK(w.get<ParticleEmitter>(e).alive() == 64); // capped
 }
+
+TEST_CASE("Tween with zero duration built by aggregate init does not hang") {
+    World w;
+    auto e = w.spawn();
+    w.add<Transform>(e);
+    Tween tw{.prop = TweenProp::Scale, .from{1, 1}, .to{3, 3}, .duration = 0};
+    w.add<Tween>(e, tw.pingPong()); // forever: the leg loop must still terminate each update
+    updateTweens(w, 0.016f);
+    updateTweens(w, 0.016f);
+    CHECK(w.has<Tween>(e));
+    float s = w.get<Transform>(e).scale.x;
+    CHECK(s >= 1.f);
+    CHECK(s <= 3.f);
+}

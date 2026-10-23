@@ -22,10 +22,6 @@ target_link_libraries(nova
     PRIVATE SDL3::SDL3 SDL3_ttf::SDL3_ttf SDL3_mixer::SDL3_mixer box2d::box2d)
 
 target_compile_definitions(nova PUBLIC $<$<CONFIG:Debug>:NOVA_DEBUG NOVA_TRACK_ALLOCS>)
-if(NOVA_BUILD_TESTS)
-    target_compile_definitions(nova PUBLIC NOVA_TESTING)
-endif()
-
 nova_set_warnings(nova)
 
 if(NOVA_BUILD_TESTS)

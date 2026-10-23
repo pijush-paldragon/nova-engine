@@ -158,3 +158,16 @@ TEST_CASE("Input three-finger tap") {
     in.beginFrame(0.016f);
     CHECK(!in.threeFingerTap());
 }
+
+TEST_CASE("Input cancelled touch releases the pointer without a tap") {
+    InputBackend in;
+    in.beginFrame(0.016f);
+    in.handleEvent(fingerDown(1, 0.5f, 0.5f), kIdentityFit);
+    in.beginFrame(0.016f);
+    in.handleEvent(finger(SDL_EVENT_FINGER_CANCELED, 1, 0.5f, 0.5f), kIdentityFit); // e.g. a system gesture
+    REQUIRE(in.primary());
+    CHECK(in.primary()->released);
+    CHECK(!in.tapped());
+    in.beginFrame(0.016f);
+    CHECK(in.pointerCount() == 0);
+}

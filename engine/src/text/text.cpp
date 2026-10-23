@@ -132,9 +132,11 @@ void TextBackend::collectAndDraw(World& world, const ScreenFit& fit, Vec2 viewOr
     auto& items = impl_->drawList;
     items.clear();
     u32 order = 0;
-    // SDL_ttf lays out and uploads new glyphs to the GPU atlas inside these calls; allocations
-    // there belong to SDL/the driver. The draw list itself is pre-reserved.
-    memory::DriverAllocScope driver;
+    // Engine-side data follows the game's TextLabel capacity, so World::reserve<TextLabel>(n)
+    // also covers the private per-label caches and the draw list.
+    const size_t labelCapacity = registry.storage<TextLabel>().capacity();
+    if (auto& caches = registry.storage<TextCache>(); caches.capacity() < labelCapacity) caches.reserve(labelCapacity);
+    if (items.capacity() < labelCapacity) items.reserve(labelCapacity);
 
     for (auto [e, t, label] : world.view<Transform, TextLabel>()) {
         if (!label.visible || world.pendingDestroy(e)) continue;
@@ -148,12 +150,16 @@ void TextBackend::collectAndDraw(World& world, const ScreenFit& fit, Vec2 viewOr
 
         const std::string& s = label.string();
         if (!cache->text || !(cache->font == label.font)) {
-            cache->text.reset(TTF_CreateText(impl_->engine, font->font.get(), s.data(), s.size()));
+            {
+                memory::DriverAllocScope driver; // SDL_ttf layout + GPU glyph uploads
+                cache->text.reset(TTF_CreateText(impl_->engine, font->font.get(), s.data(), s.size()));
+            }
             if (!cache->text) continue;
             gLiveTexts.fetch_add(1, std::memory_order_relaxed);
             cache->color = {0, 0, 0, 0};
             ++rebuilds_;
         } else if (cache->revision != label.revision() || cache->fontGeneration != impl_->fontGeneration) {
+            memory::DriverAllocScope driver;
             TTF_SetTextString(cache->text.get(), s.data(), s.size());
             ++rebuilds_;
         }
@@ -166,7 +172,10 @@ void TextBackend::collectAndDraw(World& world, const ScreenFit& fit, Vec2 viewOr
         }
 
         int w = 0, h = 0;
-        TTF_GetTextSize(cache->text.get(), &w, &h);
+        {
+            memory::DriverAllocScope driver; // may lay out lazily
+            TTF_GetTextSize(cache->text.get(), &w, &h);
+        }
         Vec2 px = (t.pos - viewOrigin - Vec2{fit.visible.x, fit.visible.y}) * fit.scale;
         f32 x = label.align == TextAlign::Left ? px.x : label.align == TextAlign::Center ? px.x - f32(w) * 0.5f : px.x - f32(w);
         items.push_back({label.layer, order++, cache->text.get(), x, px.y - f32(h) * 0.5f});
@@ -175,6 +184,7 @@ void TextBackend::collectAndDraw(World& world, const ScreenFit& fit, Vec2 viewOr
     std::sort(items.begin(), items.end(), [](const DrawItem& a, const DrawItem& b) {
         return a.layer != b.layer ? a.layer < b.layer : a.order < b.order;
     });
+    memory::DriverAllocScope driver;
     for (const DrawItem& item : items) TTF_DrawRendererText(item.text, std::round(item.x), std::round(item.y));
 }
 

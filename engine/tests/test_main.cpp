@@ -5,6 +5,7 @@
 #include <SDL3/SDL.h>
 
 #include <nova/core/alloc_stats.hpp>
+#include <nova/core/assert.hpp>
 
 #include <cstdlib>
 #include <new>
@@ -26,6 +27,7 @@ void operator delete[](void* p, std::size_t) noexcept { std::free(p); }
 int main(int argc, char** argv) {
     // Tests read the sample game's generated assets straight from the source tree and run
     // headless: dummy video (software renderer) and dummy audio.
+    nova::detail::setAssertBreakEnabled(false); // tests deliberately exercise failure paths
     nova::setAssetRoot(NOVA_TEST_ASSET_ROOT);
     SDL_SetHint(SDL_HINT_VIDEO_DRIVER, "dummy");
     SDL_SetHint(SDL_HINT_AUDIO_DRIVER, "dummy");
