@@ -11,6 +11,7 @@ struct ScreenFit {
     f32 scale = 1;     // window pixels per design unit
     Rect visible;      // visible area in design units (extends past the design area on the long axis)
     Vec2 windowPx;     // window size in pixels
+    f32 pixelDensity = 1; // pixels per window point (mouse events arrive in points)
 };
 
 // Uniform scale so the whole design area fits; the long axis shows extra world instead of

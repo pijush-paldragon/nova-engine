@@ -83,6 +83,7 @@ void RendererBackend::onResize() {
     SDL_Rect safe{0, 0, 0, 0};
     f32 density = SDL_GetWindowPixelDensity(window_);
     if (density <= 0) density = 1;
+    fit_.pixelDensity = density;
     if (SDL_GetWindowSafeArea(window_, &safe) && safe.w > 0 && safe.h > 0) {
         safeArea_ = {fit_.visible.x + f32(safe.x) * density / fit_.scale,
                      fit_.visible.y + f32(safe.y) * density / fit_.scale,
