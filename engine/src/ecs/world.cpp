@@ -45,4 +45,12 @@ void World::snapshotTransforms() {
     }
 }
 
+void World::addSystem(Phase phase, SystemFn fn) {
+    (phase == Phase::Fixed ? fixedSystems_ : updateSystems_).push_back(fn);
+}
+
+void World::runSystems(Phase phase, SystemContext& ctx) {
+    for (SystemFn fn : (phase == Phase::Fixed ? fixedSystems_ : updateSystems_)) fn(ctx);
+}
+
 } // namespace nova

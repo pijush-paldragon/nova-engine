@@ -70,6 +70,10 @@ public:
     }
     void removeHook(HookId id);
 
+    // Systems are plain functions run in registration order within their phase.
+    void addSystem(Phase phase, SystemFn fn);
+    void runSystems(Phase phase, SystemContext& ctx);
+
     // Engine: copy current transforms into prev* before each fixed step.
     void snapshotTransforms();
 
@@ -88,6 +92,8 @@ private:
     Registry registry_;
     std::vector<Entity> pending_;
     std::vector<std::unique_ptr<Hook>> hooks_;
+    std::vector<SystemFn> fixedSystems_;
+    std::vector<SystemFn> updateSystems_;
 };
 
 } // namespace nova
