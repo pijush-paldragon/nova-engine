@@ -1,16 +1,49 @@
-# Build output
+# Build output (all CMake presets build into build/)
 /build/
 /out/
+compile_commands.json
+.cache/
+
+# Xcode
+DerivedData/
+xcuserdata/
+*.xcuserstate
+*.ipa
+*.dSYM/
+*.dSYM.zip
+
+# Android / Gradle
 platforms/android/.gradle/
 platforms/android/**/build/
 platforms/android/.cxx/
-platforms/android/local.properties
 platforms/android/app/.cxx/
-*.xcodeproj/xcuserdata/
-DerivedData/
+platforms/android/.externalNativeBuild/
+platforms/android/captures/
+platforms/android/local.properties
+*.apk
+*.aab
+
+# Signing material and secrets — never commit these
+*.keystore
+*.jks
+*.p12
+*.p8
+*.mobileprovision
+*.provisionprofile
+.env
+.env.*
+
+# Tools
+__pycache__/
+*.pyc
+
+# Agent scratch space (plans' working files)
+.superpowers/
 
 # IDE / OS
 .idea/
 .vscode/
 *.iml
+*.swp
 .DS_Store
+Thumbs.db
