@@ -11,7 +11,10 @@ target_include_directories(nova
     PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
 
 target_compile_features(nova PUBLIC cxx_std_20)
-target_compile_options(nova PUBLIC -fno-exceptions -fno-rtti)
+# Engine and games build without exceptions/RTTI (games get the flags from nova_add_game);
+# kept PRIVATE so the doctest runner can use exceptions.
+set(NOVA_NO_EH_RTTI_FLAGS -fno-exceptions -fno-rtti CACHE INTERNAL "")
+target_compile_options(nova PRIVATE ${NOVA_NO_EH_RTTI_FLAGS})
 
 # EnTT is public because World's templated API needs it; everything else stays private.
 target_link_libraries(nova
