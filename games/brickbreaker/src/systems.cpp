@@ -60,8 +60,9 @@ void paddleControl(SystemContext& ctx) {
     gs.time += ctx.dt;
     float x = ctx.world.get<Transform>(gs.paddle).pos.x;
     if (gs.autoplay) {
-        // Track the ball with a wobble so it leaves the paddle at varied angles.
-        x = ctx.world.get<Transform>(gs.ball).pos.x + 50.f * std::sin(gs.time * 1.7f);
+        // Track the ball with a wobble so it leaves the paddle at varied angles, and look away for
+        // 2 s out of every 12 so smoke runs also exercise losing lives and game over.
+        if (std::fmod(gs.time, 12.f) < 10.f) x = ctx.world.get<Transform>(gs.ball).pos.x + 50.f * std::sin(gs.time * 1.7f);
     } else if (const Pointer* p = ctx.input.primary(); p && p->held) {
         x = p->pos.x;
     } else {

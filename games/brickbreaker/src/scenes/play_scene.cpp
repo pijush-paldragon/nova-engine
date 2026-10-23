@@ -164,6 +164,7 @@ void PlayScene::onUpdate(float dt) {
         gs.ballLost = false;
         ball.launched = false;
         --gs.lives;
+        log::info("Ball lost: %d lives left", gs.lives);
         audio().play(loseSound_);
         camera().shake(12, 0.25f);
         if (gs.lives <= 0) {
