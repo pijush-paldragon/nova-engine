@@ -1,6 +1,7 @@
 #include "text/text_backend.hpp"
 
 #include "core/parse.hpp"
+#include "platform/asset_io.hpp"
 
 #include <nova/core/alloc_stats.hpp>
 #include <nova/core/log.hpp>
@@ -106,7 +107,8 @@ std::optional<FontHandle> TextBackend::loadFont(std::string_view key) {
         return std::nullopt;
     }
     std::string path = assetPath(key.substr(0, at));
-    TTF_Font* font = TTF_OpenFont(path.c_str(), size * pixelScale_);
+    SDL_IOStream* io = openAsset(key.substr(0, at));
+    TTF_Font* font = io ? TTF_OpenFontIO(io, true, size * pixelScale_) : nullptr;
     if (!font) {
         log::error("Font '%s' failed to load: %s", path.c_str(), SDL_GetError());
         return std::nullopt;

@@ -33,6 +33,7 @@ games/*/build/
 *.p8
 *.mobileprovision
 *.provisionprofile
+**/.nova/
 .env
 .env.*
 

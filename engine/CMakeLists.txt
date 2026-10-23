@@ -19,7 +19,8 @@ target_compile_options(nova PRIVATE ${NOVA_NO_EH_RTTI_FLAGS})
 # EnTT is public because World's templated API needs it; everything else stays private.
 target_link_libraries(nova
     PUBLIC  EnTT::EnTT
-    PRIVATE SDL3::SDL3 SDL3_ttf::SDL3_ttf SDL3_mixer::SDL3_mixer box2d::box2d)
+    PRIVATE SDL3::SDL3 SDL3_ttf::SDL3_ttf SDL3_mixer::SDL3_mixer box2d::box2d
+            nova_monocypher nova_zstd_decompress)
 
 target_compile_definitions(nova PUBLIC $<$<CONFIG:Debug>:NOVA_DEBUG NOVA_TRACK_ALLOCS>)
 nova_set_warnings(nova)

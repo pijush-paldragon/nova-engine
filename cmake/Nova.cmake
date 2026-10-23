@@ -50,5 +50,6 @@ endif()
 include(NovaWarnings)
 include(NovaThirdParty)
 include(NovaGame)
+include(NovaPackTool)
 
 add_subdirectory("${NOVA_ENGINE_DIR}/engine" "${CMAKE_BINARY_DIR}/nova")

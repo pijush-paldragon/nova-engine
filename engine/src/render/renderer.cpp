@@ -1,5 +1,7 @@
 #include "render/renderer_backend.hpp"
 
+#include "platform/asset_io.hpp"
+
 #include <nova/core/alloc_stats.hpp>
 #include <nova/core/log.hpp>
 #include <nova/platform/file.hpp>
@@ -137,7 +139,7 @@ void RendererBackend::endFrame() {
 
 TextureHandle RendererBackend::loadTexture(std::string_view path) {
     std::string full = assetPath(path);
-    SDL_IOStream* io = SDL_IOFromFile(full.c_str(), "rb");
+    SDL_IOStream* io = openAsset(path);
     if (!io) {
         log::error("Texture '%s' not found: %s", full.c_str(), SDL_GetError());
         return {};

@@ -1,5 +1,7 @@
 #include "audio/audio_backend.hpp"
 
+#include "platform/asset_io.hpp"
+
 #include <nova/core/log.hpp>
 #include <nova/platform/file.hpp>
 
@@ -17,6 +19,12 @@ struct AudioDeleter {
     void operator()(MIX_Audio* a) const { MIX_DestroyAudio(a); }
 };
 using AudioPtr = std::unique_ptr<MIX_Audio, AudioDeleter>;
+
+// predecode=false keeps the stream open for playback (music); the mixer closes it either way.
+MIX_Audio* loadAudio(MIX_Mixer* mixer, std::string_view path, bool predecode) {
+    SDL_IOStream* io = openAsset(path);
+    return io ? MIX_LoadAudio_IO(mixer, io, predecode, true) : nullptr;
+}
 
 } // namespace
 
@@ -132,7 +140,7 @@ AudioBackend::~AudioBackend() = default;
 std::optional<SoundHandle> AudioBackend::loadSound(std::string_view path) {
     if (!available()) return std::nullopt;
     std::string full = assetPath(path);
-    MIX_Audio* audio = MIX_LoadAudio(impl_->mixer, full.c_str(), true);
+    MIX_Audio* audio = loadAudio(impl_->mixer, path, true);
     if (!audio) {
         log::error("Sound '%s' failed to load: %s", full.c_str(), SDL_GetError());
         return std::nullopt;
@@ -143,7 +151,7 @@ std::optional<SoundHandle> AudioBackend::loadSound(std::string_view path) {
 std::optional<MusicHandle> AudioBackend::loadMusic(std::string_view path) {
     if (!available()) return std::nullopt;
     std::string full = assetPath(path);
-    MIX_Audio* audio = MIX_LoadAudio(impl_->mixer, full.c_str(), false); // streamed
+    MIX_Audio* audio = loadAudio(impl_->mixer, path, false); // streamed
     if (!audio) {
         log::error("Music '%s' failed to load: %s", full.c_str(), SDL_GetError());
         return std::nullopt;
