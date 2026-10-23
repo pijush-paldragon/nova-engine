@@ -85,7 +85,7 @@ Open `platforms/android` in Android Studio and press Run, or from a terminal (de
 cd platforms/android && ./gradlew installDebug
 ```
 
-The game to build, its application id and name are Gradle properties in `platforms/android/gradle.properties` (`novaGame`, `novaApplicationId`, `novaAppName`).
+The game to build, its application id, name and orientation are Gradle properties in `platforms/android/gradle.properties` (`novaGame`, `novaApplicationId`, `novaAppName`, `novaOrientation`). With several devices attached, pick one with `ANDROID_SERIAL=<serial>` (see `adb devices`). To test the OpenGL ES fallback on a device: `./gradlew installDebug -PnovaRenderDriver=opengles2`.
 
 ## Debugging switches
 
@@ -93,7 +93,8 @@ The game to build, its application id and name are Gradle properties in `platfor
 |---|---|
 | `F1` / three-finger tap | Toggle the debug overlay (FPS, frame time, backend, draw calls, entities, bodies, allocations/frame) |
 | `NOVA_DEBUG_OVERLAY=1` | Start with the overlay visible |
-| `NOVA_RENDER_DRIVER=opengl` (or `opengles2`, `vulkan`, `metal`, `software`) | Force a render backend, e.g. to test the fallback |
+| `NOVA_RENDER_DRIVER=opengl` (or `opengles2`, `vulkan`, `metal`, `software`) | Force a render backend, e.g. to test the fallback (Android: `-PnovaRenderDriver=...`) |
+| `NOVA_LOG_INPUT=1` | Log every touch/mouse event (device input debugging) |
 | `--autoplay` | Games may drive themselves (Brick Breaker's paddle plays) |
 | `--frames N` | Run N frames at a fixed 60 Hz step, then tear down and run the leak check (non-zero exit on leaks) |
 | `--fail-on-alloc` | Fail if a steady-state gameplay frame allocates on the game thread |

@@ -1,0 +1,60 @@
+plugins {
+    id 'com.android.application'
+}
+
+// The repo root holds the one CMake build shared by every platform.
+def repoRoot = file('../../..').canonicalPath
+def novaGame = project.findProperty('novaGame') ?: 'brickbreaker'
+
+android {
+    namespace = 'com.gamestudio.nova'
+    compileSdk 36
+    ndkVersion = '28.2.13676358'
+
+    defaultConfig {
+        applicationId project.findProperty('novaApplicationId') ?: "com.gamestudio.${novaGame}"
+        minSdk 24 // first Android version with Vulkan
+        targetSdk 36
+        versionCode 1
+        versionName '1.0'
+        resValue 'string', 'app_name', project.findProperty('novaAppName') ?: novaGame
+        manifestPlaceholders = [novaOrientation: project.findProperty('novaOrientation') ?: 'sensorPortrait',
+                                novaRenderDriver: project.findProperty('novaRenderDriver') ?: '']
+        externalNativeBuild {
+            cmake {
+                // libc++ is linked statically: libmain.so is the only C++ library in the APK.
+                arguments "-DNOVA_GAME=${novaGame}", '-DANDROID_STL=c++_static', '-DANDROID_PLATFORM=android-24'
+                abiFilters 'arm64-v8a', 'x86_64'
+            }
+        }
+    }
+
+    externalNativeBuild {
+        cmake {
+            path "${repoRoot}/CMakeLists.txt"
+            version '3.30.5'
+            buildStagingDirectory "${repoRoot}/build/android-cxx"
+        }
+    }
+
+    sourceSets.main {
+        // SDL's Java glue comes straight from the submodule, so upgrading SDL updates it too.
+        java.srcDirs += ["${repoRoot}/third_party/SDL/android-project/app/src/main/java"]
+        assets.srcDirs = ["${repoRoot}/games/${novaGame}/assets"]
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    lint {
+        abortOnError = false
+    }
+}
