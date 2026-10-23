@@ -5,6 +5,8 @@
 
 def gameRoot = project.ext.novaGameRoot
 def engineDir = project.ext.novaEngineDir
+// Release builds ship one encrypted game.pak, which the native build writes here.
+def releasePackDir = "${gameRoot}/build/android-pack/release"
 
 android {
     namespace = 'com.gamestudio.nova.host' // fixed; each game's applicationId is its real identity
@@ -25,6 +27,16 @@ android {
         }
     }
 
+    buildTypes {
+        release {
+            externalNativeBuild {
+                cmake {
+                    arguments '-DNOVA_PACK_ASSETS=ON', "-DNOVA_ANDROID_PACK_DIR=${releasePackDir}"
+                }
+            }
+        }
+    }
+
     externalNativeBuild {
         cmake {
             path "${gameRoot}/CMakeLists.txt"
@@ -37,7 +49,13 @@ android {
         // SDL's Java glue comes straight from the engine's SDL submodule, plus NovaActivity.
         java.srcDirs += ["${engineDir}/third_party/SDL/android-project/app/src/main/java",
                          "${engineDir}/platforms/android/java"]
-        assets.srcDirs = ["${gameRoot}/assets"]
+        assets.srcDirs = []
+    }
+    sourceSets.debug.assets.srcDirs = ["${gameRoot}/assets"]
+    sourceSets.release.assets.srcDirs = [releasePackDir]
+
+    androidResources {
+        noCompress 'pak' // read with seeks; already compressed and encrypted
     }
 
     compileOptions {
@@ -48,4 +66,10 @@ android {
     lint {
         abortOnError = false
     }
+}
+
+// The pack is written by the native build, so assets merge only after it.
+android.applicationVariants.all { variant ->
+    def name = variant.name.capitalize()
+    tasks.named("merge${name}Assets").configure { dependsOn("externalNativeBuild${name}") }
 }

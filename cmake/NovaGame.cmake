@@ -82,9 +82,12 @@ function(nova_add_game name)
     # Pack builds treat a missing game.pak as tampering (see entry.cpp).
     target_compile_definitions(${target} PRIVATE "$<${NOVA_PACK_MODE}:NOVA_REQUIRE_PACK=1>")
 
+    if(ANDROID AND NOVA_ANDROID_PACK_DIR)
+        # Release APKs: Gradle takes its assets from this folder (see nova-app.gradle).
+        _nova_stage_assets(${target} "${assets_dir}" "${NOVA_ANDROID_PACK_DIR}" "${key_file}")
+    endif()
+
     if(APPLE)
-        # Assets are staged after linking: a plain copy in dev builds, one encrypted game.pak in
-        # pack builds. Any asset or key change relinks the target, which re-stages.
         if(CMAKE_GENERATOR STREQUAL "Xcode")
             # Xcode's bundle path contains ${EFFECTIVE_PLATFORM_NAME}; the script asks Xcode instead.
             set(resources_dir "XCODE")
@@ -93,15 +96,7 @@ function(nova_add_game name)
         else()
             set(resources_dir "$<TARGET_BUNDLE_CONTENT_DIR:${target}>/Resources")
         endif()
-        file(GLOB_RECURSE asset_files CONFIGURE_DEPENDS "${assets_dir}/*")
-        set_property(TARGET ${target} APPEND PROPERTY LINK_DEPENDS
-            ${asset_files} "${key_file}" ${NOVA_PACK_TOOL_SOURCES})
-        add_custom_command(TARGET ${target} POST_BUILD
-            COMMAND ${NOVA_PACK_TOOL_UPDATE}
-            COMMAND "${CMAKE_COMMAND}" "-DPACK=${NOVA_PACK_MODE}" "-DSRC=${assets_dir}" "-DDEST=${resources_dir}"
-                    "-DTOOL=${NOVA_PACK_TOOL}" "-DKEYFILE=${key_file}" -P "${NOVA_ENGINE_DIR}/cmake/NovaStageAssets.cmake"
-            COMMENT "Staging ${name} assets"
-            VERBATIM)
+        _nova_stage_assets(${target} "${assets_dir}" "${resources_dir}" "${key_file}")
 
         set_target_properties(${target} PROPERTIES
             OUTPUT_NAME "${name}"
@@ -142,6 +137,20 @@ function(nova_add_game name)
                 XCODE_ATTRIBUTE_ENABLE_BITCODE "NO")
         endif()
     endif()
+endfunction()
+
+# Stages <assets_dir> into <dest> after <target> links: a plain copy in dev builds, one encrypted
+# game.pak in pack builds (NovaStageAssets.cmake). Any asset or key change relinks the target,
+# which re-stages.
+function(_nova_stage_assets target assets_dir dest key_file)
+    file(GLOB_RECURSE asset_files CONFIGURE_DEPENDS "${assets_dir}/*")
+    set_property(TARGET ${target} APPEND PROPERTY LINK_DEPENDS ${asset_files} "${key_file}" ${NOVA_PACK_TOOL_SOURCES})
+    add_custom_command(TARGET ${target} POST_BUILD
+        COMMAND ${NOVA_PACK_TOOL_UPDATE}
+        COMMAND "${CMAKE_COMMAND}" "-DPACK=${NOVA_PACK_MODE}" "-DSRC=${assets_dir}" "-DDEST=${dest}"
+                "-DTOOL=${NOVA_PACK_TOOL}" "-DKEYFILE=${key_file}" -P "${NOVA_ENGINE_DIR}/cmake/NovaStageAssets.cmake"
+        COMMENT "Staging assets for ${target}"
+        VERBATIM)
 endfunction()
 
 # nova_add_game_tests(<name> SOURCES <files...>)
