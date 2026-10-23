@@ -1,7 +1,7 @@
 # Nova — 2D Mobile Engine on SDL3: Design Spec
 
 - **Date:** 2026-10-23
-- **Status:** Awaiting review
+- **Status:** Approved; clarified during implementation (see the plan's Global Constraints)
 - **Scope:** Reusable 2D engine (`nova`) + sample game (`brickbreaker`) for Android and iOS, with a macOS desktop target for iteration.
 
 ## 1. Intent
@@ -65,13 +65,13 @@ Boilerplate/
 app ──► scene ──► ecs ──► { render, input, audio, text, physics, assets, save, tween, platform } ──► core
 ```
 
-- **core**: math (`Vec2`, `Rect`, `Color`, `Mat3` affine), `Handle<T>` and `HandlePool<T>`, `FrameArena`, `Result<T>`, logging, asserts, time. No third-party dependencies.
+- **core**: math (`Vec2`, `Rect`, `Color`, `Mat3` affine), `Handle<T>` and `HandlePool<T>`, `FrameArena`, `Result<T>`, logging, asserts, time. No third-party dependencies, except SDL for logging (`SDL_Log*`) and time (`SDL_GetTicksNS`).
 - Each mid-layer module depends on `core` plus at most its own third-party library. The one exception is `text`, which also depends on `render`, because it draws through the same `SDL_Renderer`. Modules never include each other's private headers.
 - Code that bridges components to subsystems (sprite collection, physics attach/sync and the `RigidBody` destroy hook, the tween and particle systems) lives in `ecs/`. The subsystems themselves stay ECS-agnostic.
 - **ecs** wraps EnTT: `World`, `Entity`, views, and systems registered per `Phase`.
 - **scene**: `Scene` base class, `SceneStack` with deferred operations, scene-owned `Timers`.
 - **app**: the SDL main callbacks (`SDL_MAIN_USE_CALLBACKS`), subsystem construction order, the frame loop, lifecycle handling, and the debug overlay.
-- Enforcement: third-party include directories are `PRIVATE` to `nova`, so games physically can't include them. Public headers forward-declare and use engine types only.
+- Enforcement: SDL, SDL_ttf, SDL_mixer and Box2D include directories are `PRIVATE` to `nova`, so games physically can't include them (only the engine's `entry.cpp`, compiled into each game, sees SDL). EnTT is the one public include, because the templated `World` API needs it; game code never names `entt::`.
 - Language and flags: C++20, `-fno-exceptions -fno-rtti`, warnings as errors in engine code, ASan and UBSan in macOS debug builds.
 
 ## 5. Game-facing API
@@ -140,7 +140,7 @@ world().destroy(e);            // deferred until end of frame
 
 - **Ownership tree:** `App` owns its subsystems through `unique_ptr`, constructed in dependency order and destroyed in reverse. `SceneStack` owns its scenes, and each `Scene` owns its world. No raw `new` or `delete`, no owning raw pointers, no `shared_ptr` in the engine.
 - **Handles:** `Handle<T>{u32 index; u32 generation}`. A lookup with a stale handle returns null and asserts in debug. Used for textures, atlases, sounds, music and fonts. Entities (EnTT) and bodies (Box2D `b2BodyId`) are generational too.
-- **Asset lifetime:** each load is tagged with the requesting scene, or with `Scope::Global`. When a scene exits, assets that no scene on the stack references any more are released. Repeated loads of the same path return the same handle. On low memory, unreferenced cached entries are released.
+- **Asset lifetime:** each load is tagged with the requesting scene, or with `Scope::Global`. When a scene exits, assets that no scene on the stack references any more are released. Repeated loads of the same path return the same handle. On low memory, unreferenced cached entries are released. Unreferenced assets are purged after each completed scene transition, so a `replace` with the same scene type reuses already-loaded assets. The `Assets` facade sits above `render`, `audio` and `text` (the generic `AssetCache` and the atlas parser stay low-level).
 - **Physics cleanup:** an EnTT `on_destroy<RigidBody>` hook destroys the Box2D body.
 - **Zero allocations per frame:** a 1 MB `FrameArena` serves draw lists and temporary arrays, particle pools have fixed capacity, and containers are reserved on scene load. Debug builds count `operator new` calls per frame and warn when gameplay frames allocate.
 - **Leak report:** on shutdown, `HandlePool`s report live entries in debug, and the smoke test fails on any.
@@ -170,7 +170,7 @@ world().destroy(e);            // deferred until end of frame
 ### 8.4 Text (SDL3_ttf 3.2)
 
 - A renderer text engine (`TTF_CreateRendererTextEngine`). A `Text` component holds a font handle, string, colour, alignment and layer.
-- The `TTF_Text` is rebuilt only when the string changes. Fonts are opened at design size × render scale, so glyphs are drawn at their true pixel size. Text is drawn after the sprite batches on the UI layers.
+- The `TTF_Text` is rebuilt only when the string changes. Fonts are opened at design size × render scale, so glyphs are drawn at their true pixel size. Text is always drawn above the scene's sprites (v1); `TextLabel::layer` orders labels among themselves.
 
 ### 8.5 Physics (Box2D 3.2)
 
@@ -218,7 +218,7 @@ Asset paths are always relative (`"sprites/ball.png"`), resolved through `SDL_IO
   - The ball is a dynamic circle with restitution 1, friction 0 and bullet mode. The ball speed system clamps its velocity magnitude to a constant and nudges near-horizontal angles.
   - The walls are static. The bottom is a sensor: touching it loses a life.
   - Bricks are static boxes in a grid of 8 columns by (4 + level) rows, with up to 3 hit points shown as colours.
-- **Feedback:** brick break triggers a particle burst, a "break" sound and a score tween pop. Hitting the paddle plays a "hit" sound. Losing a life plays a "lose" sound and a short screen shake through the camera offset tween. Clearing all bricks moves to the next level.
+- **Feedback:** brick break triggers a particle burst, a "break" sound and a score tween pop. Hitting the paddle plays a "hit" sound. Losing a life plays a "lose" sound and a short screen shake via `Camera2D::shake()`. Clearing all bricks moves to the next level.
 - **HUD:** score, lives and level drawn with text inside `safeArea()`.
 - **Save:** `best_score`, `music_volume`, `sfx_volume`.
 - **Assets** (generated): `sprites.png` and `.atlas` (paddle, ball, brick, particle, white pixel), `sfx/hit.wav`, `sfx/break.wav`, `sfx/lose.wav`, `music/loop.wav` (22.05 kHz mono, streamed; no OGG encoder is installed, and the engine still supports OGG), `fonts/Fredoka.ttf` plus `fonts/OFL.txt` (fetched from `google/fonts` `ofl/fredoka`). `tools/gen_assets.py` uses only the Python standard library.
