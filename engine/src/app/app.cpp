@@ -56,6 +56,10 @@ Result<void> App::init(int argc, char** argv) {
     renderer_ = std::move(renderer.value());
 
     audio_ = AudioBackend::create();
+    auto text = TextBackend::create(renderer_->sdl());
+    if (!text) return Result<void>::fail(text.error().message);
+    text_ = std::move(text.value());
+    text_->setPixelScale(renderer_->pixelScale());
 
     RendererBackend* r = renderer_.get();
     assets_ = std::make_unique<Assets>(
@@ -69,6 +73,9 @@ Result<void> App::init(int argc, char** argv) {
                              [a](SoundHandle h) { a->unloadSound(h); },
                              [a](std::string_view p) { return a->loadMusic(p); },
                              [a](MusicHandle h) { a->unloadMusic(h); });
+    TextBackend* t = text_.get();
+    assets_->setFontLoader([t](std::string_view key) { return t->loadFont(key); },
+                           [t](FontHandle h) { t->unloadFont(h); });
 
     char* pref = SDL_GetPrefPath(config_.org, config_.app);
     save_ = std::make_unique<SaveStore>(pref ? std::string(pref) : std::string());
@@ -79,6 +86,7 @@ Result<void> App::init(int argc, char** argv) {
     services_.input = &input_;
     services_.assets = assets_.get();
     services_.audio = audio_.get();
+    services_.text = text_.get();
     services_.save = save_.get();
     services_.options = &options_;
     services_.random = &random_;
@@ -163,6 +171,7 @@ void App::runFrame(f64 dt) {
 }
 
 void App::render(Scene& top) {
+    text_->setPixelScale(renderer_->pixelScale());
     renderer_->beginFrame();
     scenes_->forEachVisible([&](Scene& scene) {
         batch_.begin();
@@ -171,6 +180,7 @@ void App::render(Scene& top) {
         collectSprites(scene.world_, batch_, alpha, origin);
         collectParticles(scene.world_, batch_, origin);
         renderer_->submit(batch_);
+        text_->collectAndDraw(scene.world_, renderer_->fit(), origin); // text above the scene's sprites
     });
     if (overlay_) {
         FrameStats stats{fps_.fps(),
@@ -241,9 +251,12 @@ bool App::teardownAndCheckLeaks() {
     assets_.reset();
     u32 textures = renderer_ ? renderer_->liveTextureCount() : 0;
     u32 sounds = audio_ ? audio_->liveAudioCount() : 0;
-    bool clean = textures <= 1 && sounds == 0; // the checkerboard lives as long as the renderer
+    u32 fonts = text_ ? text_->liveFontCount() : 0;
+    u32 labels = text_ ? text_->liveTextCount() : 0;
+    bool clean = textures <= 1 && sounds == 0 && fonts == 0 && labels == 0; // checkerboard lives with the renderer
     if (clean) log::info("Leak check: clean");
-    else log::error("Leak check: %u textures, %u sounds still alive after teardown", textures - 1, sounds);
+    else log::error("Leak check: still alive after teardown: %u textures, %u sounds, %u fonts, %u labels",
+                    textures - 1, sounds, fonts, labels);
     return clean;
 }
 
@@ -254,6 +267,7 @@ void App::shutdown() {
     scenes_.reset(); // scenes (and their worlds) before the assets they reference
     services_.assets = nullptr;
     assets_.reset();
+    text_.reset();
     audio_.reset();
     renderer_.reset();
     window_.reset();

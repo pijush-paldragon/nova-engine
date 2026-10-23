@@ -40,6 +40,19 @@ MusicHandle Assets::music(std::string_view path, ScopeId scope) {
     return h ? *h : MusicHandle{};
 }
 
+void Assets::setFontLoader(FontLoader loadFont, FontUnloader unloadFont) {
+    fonts_.emplace(std::move(loadFont), [unloadFont](FontHandle& h) { unloadFont(h); });
+}
+
+FontHandle Assets::font(std::string_view path, f32 sizePx, ScopeId scope) {
+    if (!fonts_) return {};
+    std::string key(path);
+    key += '@';
+    key += std::to_string(int(sizePx + 0.5f));
+    FontHandle* h = fonts_->get(fonts_->acquire(key, resolve(scope)));
+    return h ? *h : FontHandle{};
+}
+
 Atlas Assets::atlas(std::string_view name, ScopeId scope) {
     ScopeId s = resolve(scope);
     auto handle = atlases_.acquire(name, s);
@@ -88,6 +101,7 @@ void Assets::releaseScope(ScopeId scope) {
     textures_.releaseScope(scope);
     if (sounds_) sounds_->releaseScope(scope);
     if (musics_) musics_->releaseScope(scope);
+    if (fonts_) fonts_->releaseScope(scope);
 }
 
 void Assets::purgeUnreferenced() {
@@ -95,11 +109,12 @@ void Assets::purgeUnreferenced() {
     textures_.purgeUnreferenced();
     if (sounds_) sounds_->purgeUnreferenced();
     if (musics_) musics_->purgeUnreferenced();
+    if (fonts_) fonts_->purgeUnreferenced();
 }
 
 u32 Assets::loadedCount() const {
     return textures_.loadedCount() + atlases_.loadedCount() + (sounds_ ? sounds_->loadedCount() : 0) +
-           (musics_ ? musics_->loadedCount() : 0);
+           (musics_ ? musics_->loadedCount() : 0) + (fonts_ ? fonts_->loadedCount() : 0);
 }
 
 } // namespace nova

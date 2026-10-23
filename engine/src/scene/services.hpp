@@ -6,6 +6,7 @@ class RendererBackend;
 class InputBackend;
 class Assets;
 class AudioBackend;
+class TextBackend;
 class SaveStore;
 class Random;
 class FrameArena;
@@ -17,6 +18,7 @@ struct Services {
     InputBackend* input = nullptr;
     Assets* assets = nullptr;
     AudioBackend* audio = nullptr;
+    TextBackend* text = nullptr;
     SaveStore* save = nullptr;
     const AppOptions* options = nullptr;
     Random* random = nullptr;

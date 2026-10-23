@@ -4,6 +4,7 @@
 #include <nova/assets/atlas.hpp>
 #include <nova/audio/audio.hpp>
 #include <nova/render/types.hpp>
+#include <nova/text/text.hpp>
 
 #include <functional>
 #include <optional>
@@ -54,6 +55,8 @@ public:
     // Invalid handle (silent playback) if the file is missing or audio is unavailable.
     SoundHandle sound(std::string_view path, ScopeId scope = kActiveScope);
     MusicHandle music(std::string_view path, ScopeId scope = kActiveScope);
+    // sizePx is in design units; the engine rasterises at the screen's real pixel size.
+    FontHandle font(std::string_view path, f32 sizePx, ScopeId scope = kActiveScope);
 
     // Engine: audio loaders are injected once the audio subsystem exists.
     using SoundLoader = std::function<std::optional<SoundHandle>(std::string_view)>;
@@ -62,6 +65,9 @@ public:
     using MusicUnloader = std::function<void(MusicHandle)>;
     void setAudioLoaders(SoundLoader loadSound, SoundUnloader unloadSound, MusicLoader loadMusic,
                          MusicUnloader unloadMusic);
+    using FontLoader = std::function<std::optional<FontHandle>(std::string_view key)>;
+    using FontUnloader = std::function<void(FontHandle)>;
+    void setFontLoader(FontLoader loadFont, FontUnloader unloadFont);
 
     // Engine: scope bookkeeping driven by SceneStack.
     void setActiveScope(ScopeId scope) { activeScope_ = scope; }
@@ -89,6 +95,7 @@ private:
     AssetCache<AtlasData, Atlas::Tag> atlases_;
     std::optional<AssetCache<SoundHandle, SoundTag>> sounds_;
     std::optional<AssetCache<MusicHandle, MusicTag>> musics_;
+    std::optional<AssetCache<FontHandle, FontTag>> fonts_;
     std::unordered_set<std::string> reportedMissing_;
 };
 

@@ -1,6 +1,7 @@
 #include <nova/ecs/components.hpp>
 #include <nova/ecs/tween.hpp>
 #include <nova/ecs/world.hpp>
+#include <nova/text/text.hpp>
 
 #include <cmath>
 
@@ -49,8 +50,12 @@ void apply(World& world, Entity e, Transform& t, TweenProp prop, Vec2 v) {
             t.rotation = t.prevRotation = v.x;
             break;
         case TweenProp::Alpha:
-            if (Sprite* s = world.tryGet<Sprite>(e)) s->color.a = u8(std::lround(clamp(v.x, 0.f, 1.f) * 255));
+        {
+            u8 a = u8(std::lround(clamp(v.x, 0.f, 1.f) * 255));
+            if (Sprite* s = world.tryGet<Sprite>(e)) s->color.a = a;
+            if (TextLabel* l = world.tryGet<TextLabel>(e)) l->color.a = a;
             break;
+        }
     }
 }
 

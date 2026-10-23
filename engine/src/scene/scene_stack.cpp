@@ -7,6 +7,7 @@
 #include <nova/core/log.hpp>
 #include <nova/scene/scene_stack.hpp>
 #include <render/renderer_backend.hpp>
+#include <text/text_backend.hpp>
 
 namespace nova {
 
@@ -14,6 +15,7 @@ namespace nova {
 
 Assets& Scene::assets() { NOVA_ASSERT(services_->assets, "no Assets"); return *services_->assets; }
 Audio& Scene::audio() { NOVA_ASSERT(services_->audio, "no Audio"); return *services_->audio; }
+Text& Scene::text() { NOVA_ASSERT(services_->text, "no Text"); return *services_->text; }
 Input& Scene::input() { NOVA_ASSERT(services_->input, "no Input"); return *services_->input; }
 Renderer2D& Scene::renderer() { NOVA_ASSERT(services_->renderer, "no renderer"); return *services_->renderer; }
 SaveStore& Scene::save() { NOVA_ASSERT(services_->save, "no SaveStore"); return *services_->save; }

@@ -10,6 +10,7 @@ namespace nova {
 
 class Assets;
 class Audio;
+class Text;
 class Input;
 class Renderer2D;
 class SaveStore;
@@ -44,6 +45,7 @@ protected:
     Camera2D& camera() { return camera_; }
     Assets& assets();
     Audio& audio();
+    Text& text();
     Input& input();
     Renderer2D& renderer();
     SaveStore& save();

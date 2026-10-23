@@ -5,6 +5,7 @@
 #include <nova/app/app_options.hpp>
 #include <nova/app/game_config.hpp>
 #include <nova/assets/assets.hpp>
+#include <nova/audio/audio.hpp>
 #include <nova/core/assert.hpp>
 #include <nova/core/log.hpp>
 #include <nova/core/math.hpp>
@@ -24,3 +25,4 @@
 #include <nova/scene/scene.hpp>
 #include <nova/scene/scene_stack.hpp>
 #include <nova/scene/timers.hpp>
+#include <nova/text/text.hpp>
