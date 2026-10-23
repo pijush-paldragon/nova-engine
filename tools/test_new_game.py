@@ -74,8 +74,8 @@ class GenerateTests(unittest.TestCase):
         engine = self.tmp / "Game Studio" / "nova-engine"
         out = self.gen(self.tmp / "Game Studio" / "Space Game", engine_dir=engine)
         cmake = (out / "CMakeLists.txt").read_text()
-        self.assertIn('set(NOVA_ENGINE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../nova-engine"', cmake)
-        self.assertIn('include("${NOVA_ENGINE_DIR}/cmake/Nova.cmake")', cmake)
+        self.assertIn('set(_nova_engine "${CMAKE_CURRENT_SOURCE_DIR}/../nova-engine")', cmake)
+        self.assertIn('include("${_nova_engine}/cmake/Nova.cmake")', cmake)
 
     def test_refuses_non_empty_target(self):
         target = self.tmp / "Busy"
@@ -122,6 +122,43 @@ class GenerateTests(unittest.TestCase):
         out = self.gen(self.tmp / "Derived", name="Super Space-Run 2")
         self.assertIn("project(superspacerun2", (out / "CMakeLists.txt").read_text())
 
+    def test_symlinked_target_resolves_to_engine(self):
+        real_engine = self.tmp / "real" / "nova-engine"
+        (real_engine / "cmake").mkdir(parents=True)
+        (self.tmp / "real" / "games").mkdir()
+        os.symlink(self.tmp / "real" / "games", self.tmp / "shortcut")  # shortcut at a different depth
+        out = self.gen(self.tmp / "shortcut" / "Game", engine_dir=real_engine)
+        rel = re.search(r'CMAKE_CURRENT_SOURCE_DIR\}/([^"]+)"', (out / "CMakeLists.txt").read_text()).group(1)
+        # CMake and Gradle see the physical (symlink-resolved) source dir.
+        self.assertEqual(Path(os.path.realpath(Path(os.path.realpath(out)) / rel)), Path(os.path.realpath(real_engine)))
+
+    def test_rejects_reserved_target_names(self):
+        for name in ["Nova", "Test", "Box2D", "All", "Install", "SDL3", "Main"]:
+            with self.subTest(name=name), self.assertRaises(new_game.GeneratorError):
+                self.gen(self.tmp / f"r{name}", name=name)
+
+    def test_leading_at_or_question_mark_escaped_for_android(self):
+        out = self.gen(self.tmp / "AtHome", name="@Home")
+        self.assertIn('"\\\\@Home"', (out / "platforms/android/app/build.gradle").read_text())
+        out2 = self.gen(self.tmp / "Quiz", name="?Quiz", target_name="quiz")
+        self.assertIn('"\\\\?Quiz"', (out2 / "platforms/android/app/build.gradle").read_text())
+
+    def test_refuses_target_inside_engine(self):
+        self.engine.mkdir()
+        with self.assertRaises(new_game.GeneratorError):
+            self.gen(self.engine / "MyGame")
+        self.assertFalse((self.engine / "MyGame").exists())
+
+    def test_rejects_underscore_in_bundle_id(self):
+        with self.assertRaises(new_game.GeneratorError):
+            self.gen(self.tmp / "Under", bundle_id="com.studio.my_game")
+
+    def test_ios_app_icon_catalog_present(self):
+        out = self.gen(self.tmp / "Iconic")
+        icon = out / "platforms/ios/Assets.xcassets/AppIcon.appiconset"
+        self.assertTrue((icon / "Contents.json").exists())
+        self.assertTrue((icon / "AppIcon-1024.png").exists())
+
     @unittest.skipUnless(shutil.which("git"), "git not installed")
     def test_git_flag(self):
         no_git = self.gen(self.tmp / "NoGit")
@@ -131,6 +168,56 @@ class GenerateTests(unittest.TestCase):
         self.assertEqual(len(log.stdout.strip().splitlines()), 1)
         status = subprocess.run(["git", "-C", str(with_git), "status", "--porcelain"], capture_output=True, text=True)
         self.assertEqual(status.stdout.strip(), "")
+
+
+@unittest.skipUnless(shutil.which("cmake"), "cmake not installed")
+class EngineLookupTests(unittest.TestCase):
+    """The generated CMakeLists must re-resolve the engine on every configure (-D > env > default)."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.tmp = Path(self._tmp.name)
+        for tag in ("A", "B", "C"):  # stand-in engines: just report which one was included
+            cmake_dir = self.tmp / f"engine{tag}" / "cmake"
+            cmake_dir.mkdir(parents=True)
+            (cmake_dir / "Nova.cmake").write_text(
+                f'message(STATUS "NOVA_ENGINE_USED={tag}")\n'
+                "function(nova_add_game)\nendfunction()\nfunction(nova_add_game_tests)\nendfunction()\n")
+        self.game = new_game.generate(self.tmp / "Game", name="Lookup", bundle_id="com.t.lookup",
+                                      engine_dir=self.tmp / "engineA", git=False)
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def configure(self, env_engine=None, extra=()):
+        env = dict(os.environ)
+        env.pop("NOVA_ENGINE_DIR", None)
+        if env_engine:
+            env["NOVA_ENGINE_DIR"] = str(self.tmp / env_engine)
+        r = subprocess.run(["cmake", "-S", str(self.game), "-B", str(self.tmp / "build"), *extra],
+                           capture_output=True, text=True, env=env)
+        m = re.search(r"NOVA_ENGINE_USED=(\w)", r.stdout)
+        return m.group(1) if m else r.stdout + r.stderr
+
+    def test_default_then_env_then_override_then_back(self):
+        self.assertEqual(self.configure(), "A")                       # relative default
+        self.assertEqual(self.configure(env_engine="engineB"), "B")   # env honoured on reconfigure
+        self.assertEqual(self.configure(env_engine="engineB",
+                                        extra=[f"-DNOVA_ENGINE_DIR={self.tmp / 'engineC'}"]), "C")  # -D wins
+        self.assertEqual(self.configure(extra=["-DNOVA_ENGINE_DIR="]), "A")  # clearing returns to default
+
+
+class CMakeHelperTests(unittest.TestCase):
+    @unittest.skipUnless(shutil.which("cmake"), "cmake not installed")
+    def test_nova_add_game_tests_rejects_unknown_arguments(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            script = Path(tmp) / "check.cmake"
+            script.write_text(f'set(NOVA_BUILD_GAME_TESTS OFF)\nset(NOVA_ENGINE_DIR "{new_game.ENGINE_ROOT}")\n'
+                              f'include("{new_game.ENGINE_ROOT}/cmake/NovaGame.cmake")\n'
+                              "nova_add_game_tests(demo SOURCE tests/a.cpp)\n")
+            r = subprocess.run(["cmake", "-P", str(script)], capture_output=True, text=True)
+            self.assertNotEqual(r.returncode, 0)
+            self.assertIn("unknown arguments", r.stdout + r.stderr)
 
 
 if __name__ == "__main__":

@@ -7,13 +7,14 @@
 #     [VERSION <x.y.z>]               # default 1.0.0 (CFBundleShortVersionString)
 #     [BUILD_NUMBER <n>]              # default 1 (CFBundleVersion); bump for every store upload
 #     [IOS_PLIST <file>]              # default: <game>/platforms/ios/Info.plist.in, else the engine's
-#     [IOS_LAUNCH_SCREEN <file>])     # default: <game>/platforms/ios/LaunchScreen.storyboard, else the engine's
+#     [IOS_LAUNCH_SCREEN <file>]      # default: <game>/platforms/ios/LaunchScreen.storyboard, else the engine's
+#     [IOS_ASSET_CATALOG <dir>])      # default: <game>/platforms/ios/Assets.xcassets if present (AppIcon)
 #
 # Creates the game target: an app bundle on Apple platforms, libmain.so on Android
 # (the library SDLActivity loads). Game code links the engine but cannot include SDL,
 # EnTT internals aside, or any other third-party header.
 function(nova_add_game name)
-    cmake_parse_arguments(GAME "" "ASSETS;BUNDLE_ID;DISPLAY_NAME;ORIENTATION;VERSION;BUILD_NUMBER;IOS_PLIST;IOS_LAUNCH_SCREEN" "SOURCES" ${ARGN})
+    cmake_parse_arguments(GAME "" "ASSETS;BUNDLE_ID;DISPLAY_NAME;ORIENTATION;VERSION;BUILD_NUMBER;IOS_PLIST;IOS_LAUNCH_SCREEN;IOS_ASSET_CATALOG" "SOURCES" ${ARGN})
     if(GAME_UNPARSED_ARGUMENTS)
         message(FATAL_ERROR "nova_add_game(${name}): unknown arguments: ${GAME_UNPARSED_ARGUMENTS}")
     endif()
@@ -47,6 +48,9 @@ function(nova_add_game name)
             endif()
         endif()
     endforeach()
+    if(NOT GAME_IOS_ASSET_CATALOG AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/platforms/ios/Assets.xcassets")
+        set(GAME_IOS_ASSET_CATALOG "${CMAKE_CURRENT_SOURCE_DIR}/platforms/ios/Assets.xcassets")
+    endif()
     get_filename_component(assets_dir "${GAME_ASSETS}" ABSOLUTE)
 
     if(ANDROID)
@@ -105,6 +109,13 @@ function(nova_add_game name)
             target_sources(${target} PRIVATE "${storyboard}")
             set_source_files_properties("${storyboard}" TARGET_DIRECTORY ${target} PROPERTIES
                 MACOSX_PACKAGE_LOCATION Resources)
+            if(GAME_IOS_ASSET_CATALOG)
+                # Compiled by Xcode's actool; the App Store requires the AppIcon set.
+                target_sources(${target} PRIVATE "${GAME_IOS_ASSET_CATALOG}")
+                set_source_files_properties("${GAME_IOS_ASSET_CATALOG}" TARGET_DIRECTORY ${target} PROPERTIES
+                    MACOSX_PACKAGE_LOCATION Resources)
+                set_target_properties(${target} PROPERTIES XCODE_ATTRIBUTE_ASSETCATALOG_COMPILER_APPICON_NAME AppIcon)
+            endif()
             set_target_properties(${target} PROPERTIES
                 MACOSX_BUNDLE_INFO_PLIST "${plist}"
                 XCODE_ATTRIBUTE_TARGETED_DEVICE_FAMILY "1,2"
@@ -121,10 +132,14 @@ endfunction()
 # game's src/ and reads assets from the game's assets/ folder. No-op when NOVA_BUILD_GAME_TESTS
 # is OFF (always on iOS/Android).
 function(nova_add_game_tests name)
+    cmake_parse_arguments(TESTS "" "" "SOURCES" ${ARGN})
+    if(TESTS_UNPARSED_ARGUMENTS OR NOT TESTS_SOURCES)
+        message(FATAL_ERROR "nova_add_game_tests(${name}): unknown arguments '${TESTS_UNPARSED_ARGUMENTS}' "
+                            "(expected: SOURCES <files...>)")
+    endif()
     if(NOT NOVA_BUILD_GAME_TESTS)
         return()
     endif()
-    cmake_parse_arguments(TESTS "" "" "SOURCES" ${ARGN})
     set(target ${name}_tests)
     set(support "${NOVA_ENGINE_DIR}/engine/tests/support")
     add_executable(${target} ${TESTS_SOURCES} "${support}/game_test_main.cpp" "${support}/counting_allocator.cpp")

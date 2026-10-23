@@ -20,12 +20,12 @@ python3 nova-engine/tools/new_game.py MyGame --name "My Game" --bundle-id com.st
 | Option | Meaning |
 |---|---|
 | `--name` | Display name (1–30 characters; no `" < > & \ $ ;`) |
-| `--bundle-id` | App id on both stores, e.g. `com.studio.mygame` |
+| `--bundle-id` | App id on both stores, e.g. `com.studio.mygame` (letters and digits per segment: iOS rejects `_`, Android rejects `-`) |
 | `--orientation portrait\|landscape` | Default portrait (720×1280 design size); landscape is 1280×720 |
-| `--target` | CMake/executable name; default is the name lowercased without spaces (`mygame`) |
+| `--target` | CMake/executable name; default is the name lowercased with everything but letters and digits removed (`My Game!` → `mygame`). Needed when that starts with a digit or is reserved (`nova`, `test`, `main`, `sdl…`, …) |
 | `--no-git` | Skip `git init` and the initial commit |
 
-The generator refuses a folder that already has files in it, and creates:
+The generator refuses a folder that already has files in it, or one inside the engine repo, and creates:
 
 ```
 MyGame/
@@ -36,7 +36,7 @@ MyGame/
 ├─ tests/test_game.cpp   game-logic tests (desktop)
 ├─ assets/               starter atlas, sound, font (Fredoka, OFL)
 └─ platforms/
-   ├─ ios/               Info.plist.in, LaunchScreen.storyboard (yours to edit)
+   ├─ ios/               Info.plist.in, LaunchScreen.storyboard, Assets.xcassets/AppIcon (yours to edit)
    └─ android/           Gradle project: app/build.gradle holds the app's identity and signing
 ```
 
@@ -56,24 +56,34 @@ The first build compiles SDL and the engine into the game's `build/` folder (a c
 
 ### Where the engine is found
 
-By default at the path recorded when the game was created (`../nova-engine` for the layout above). To use another checkout:
+Re-checked on every configure/build, in this order:
 
-- CMake (macOS/iOS): `cmake --preset macos-debug -DNOVA_ENGINE_DIR=/path/to/nova-engine`, or set the `NOVA_ENGINE_DIR` environment variable.
-- Android: `./gradlew installDebug -PnovaEngineDir=/path/to/nova-engine`, or `novaEngineDir=...` in `platforms/android/gradle.properties`.
+1. An explicit override: `-DNOVA_ENGINE_DIR=/path` (CMake; it sticks in that build folder until you clear it with `-DNOVA_ENGINE_DIR=`) or `-PnovaEngineDir=/path` (Gradle; also settable in `platforms/android/gradle.properties`; relative paths are from the game folder).
+2. The `NOVA_ENGINE_DIR` environment variable (CMake and Gradle).
+3. The path recorded when the game was created (`../nova-engine` for the layout above).
 
-If the engine isn't there, the build stops with a message saying where it looked.
+Moving or renaming the engine folder therefore only needs the variable or override updated — build folders don't keep a stale engine path. If the engine isn't found, the build stops with a message saying where it looked.
 
 ## 3. Working with the live engine
 
 - After changing the engine, rebuild **each** game and run its smoke test (`--autoplay --frames 600 --fail-on-alloc`). An engine change reaches every game immediately, including ones you haven't touched in months, so catch breakage early.
 - Brick Breaker (`nova-engine/games/brickbreaker`) is built the same way as your games and is the engine's regression test: run `ctest --preset macos-debug` and its 4200-frame smoke test in the engine repo before pushing engine changes.
+- **Game-owned copies.** The engine's code, CMake and shared Android build logic (`platforms/android/nova-app.gradle`) reach every game automatically. A few files were *copied* into each game when it was created and are now yours: `platforms/ios/Info.plist.in` and `LaunchScreen.storyboard`, and in `platforms/android/` the `AndroidManifest.xml`, root `build.gradle` (Android Gradle Plugin version) and the Gradle wrapper. If an engine update changes these (e.g. an SDL upgrade that needs a newer plugin), compare your copy with `nova-engine/templates/game/` and apply the change.
 
 ## 4. Releasing
 
 - **Version and build number.** iOS: `VERSION` and `BUILD_NUMBER` in `CMakeLists.txt`. Android: `versionName` and `versionCode` in `platforms/android/app/build.gradle`. Both stores reject an upload whose build number isn't higher than the last one.
 - **Android signing.** Create `platforms/android/keystore.properties` (gitignored) containing `storeFile`, `storePassword`, `keyAlias` and `keyPassword` (the store file path is relative to `platforms/android/`), then `./gradlew bundleRelease`. Never commit keystores; the `.gitignore` blocks `*.jks`, `*.keystore` and `keystore.properties`.
 - **iOS signing.** Set your Team in Xcode, then Product → Archive.
-- **Icons.** Replace `platforms/android/app/src/main/res/mipmap-*/ic_launcher.png`. For iOS, add an asset catalog in Xcode.
+- **Icons.** iOS: replace `platforms/ios/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png` (1024×1024, **no transparency** — the App Store rejects icons with an alpha channel). Android: replace `platforms/android/app/src/main/res/mipmap-*/ic_launcher.png`.
+- **Signing Team that survives regeneration.** The Xcode project is generated into `build/ios`, so set the Team through CMake instead of in Xcode: create `CMakeUserPresets.json` (gitignored) in the game folder:
+
+  ```json
+  {"version": 6, "configurePresets": [{"name": "ios-signed", "inherits": "ios",
+    "cacheVariables": {"CMAKE_XCODE_ATTRIBUTE_DEVELOPMENT_TEAM": "ABCDE12345"}}]}
+  ```
+
+  then `cmake --preset ios-signed`.
 
 ## 5. Writing game code
 

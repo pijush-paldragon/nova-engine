@@ -4,8 +4,16 @@
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     cmake_minimum_required(VERSION 3.24)
     project(BrickBreaker C CXX)
-    set(NOVA_ENGINE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../.." CACHE PATH "Path to the nova-engine checkout")
-    include("${NOVA_ENGINE_DIR}/cmake/Nova.cmake")
+    # Same lookup as a generated game: -DNOVA_ENGINE_DIR, else $NOVA_ENGINE_DIR, else this repo.
+    set(NOVA_ENGINE_DIR "" CACHE PATH "nova-engine checkout to use (empty: $NOVA_ENGINE_DIR, else ../..)")
+    if(NOVA_ENGINE_DIR)
+        set(_nova_engine "${NOVA_ENGINE_DIR}")
+    elseif(NOT "$ENV{NOVA_ENGINE_DIR}" STREQUAL "")
+        set(_nova_engine "$ENV{NOVA_ENGINE_DIR}")
+    else()
+        set(_nova_engine "${CMAKE_CURRENT_SOURCE_DIR}/../..")
+    endif()
+    include("${_nova_engine}/cmake/Nova.cmake")
 endif()
 
 nova_add_game(brickbreaker

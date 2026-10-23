@@ -4,7 +4,11 @@ plugins {
 
 // Game repo root (holds CMakeLists.txt and assets/) and the nova-engine checkout.
 ext.novaGameRoot = file('../../..').canonicalPath
-ext.novaEngineDir = file(project.findProperty('novaEngineDir') ?: "${novaGameRoot}/@ENGINE_REL_PATH@").canonicalPath
+// Engine: -PnovaEngineDir (relative paths are from the game root), else $NOVA_ENGINE_DIR (as CMake
+// uses), else the default checkout.
+def engineSetting = project.findProperty('novaEngineDir') ?: System.getenv('NOVA_ENGINE_DIR') ?: "${novaGameRoot}/@ENGINE_REL_PATH@"
+ext.novaEngineDir = (new File(engineSetting).isAbsolute() ? new File(engineSetting)
+                                                          : new File(novaGameRoot, engineSetting)).canonicalPath
 if (!file("${novaEngineDir}/platforms/android/nova-app.gradle").exists()) {
     throw new GradleException("nova-engine not found at '${novaEngineDir}'. Clone it there, or pass " +
             "-PnovaEngineDir=<path> (or set novaEngineDir=<path> in gradle.properties).")

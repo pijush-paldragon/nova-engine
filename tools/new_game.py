@@ -20,8 +20,14 @@ from pathlib import Path
 ENGINE_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_TEMPLATE = ENGINE_ROOT / "templates" / "game"
 
-BUNDLE_ID_RE = re.compile(r"^[A-Za-z][A-Za-z0-9]*(\.[A-Za-z][A-Za-z0-9_]*)+$")
+# Letters and digits only per segment: iOS forbids '_' in bundle ids, Android forbids '-'.
+BUNDLE_ID_RE = re.compile(r"^[A-Za-z][A-Za-z0-9]*(\.[A-Za-z][A-Za-z0-9]*)+$")
 TARGET_RE = re.compile(r"^[a-z][a-z0-9_]*$")
+# CMake target names already taken by the engine, its libraries or CMake itself.
+RESERVED_TARGETS = {"nova", "nova_tests", "main", "test", "all", "help", "install", "clean", "package",
+                    "package_source", "edit_cache", "rebuild_cache", "list_install_components", "zero_check",
+                    "all_build", "box2d", "entt", "doctest", "freetype", "uninstall"}
+RESERVED_TARGET_PREFIXES = ("sdl",)
 # Characters that would break a C++ string, CMake, Gradle or XML (apostrophes are escaped instead).
 FORBIDDEN_NAME_CHARS = set('"<>&\\$;')
 # Generator markers. @NOVA_*@ are CMake configure-time placeholders (Info.plist.in) and stay.
@@ -63,13 +69,15 @@ def validate(name: str, bundle_id: str, orientation: str, target_name: str) -> N
         raise GeneratorError("--orientation must be portrait or landscape")
     if not TARGET_RE.match(target_name):
         raise GeneratorError(f"target name '{target_name}' must match [a-z][a-z0-9_]* (pass --target)")
+    if target_name in RESERVED_TARGETS or target_name.startswith(RESERVED_TARGET_PREFIXES):
+        raise GeneratorError(f"target name '{target_name}' is reserved by the engine or CMake (pass --target)")
 
 
 def placeholders(name, bundle_id, orientation, target_name, engine_rel):
     landscape = orientation == "landscape"
     return {
         "GAME_NAME": name,
-        "GAME_NAME_ANDROID": name.replace("'", "\\\\'"),  # Groovy "..." → Android resource \'
+        "GAME_NAME_ANDROID": android_resource_string(name),
         "GAME_TARGET": target_name,
         "BUNDLE_ID": bundle_id,
         "SAVE_ORG": bundle_id.rsplit(".", 1)[0],
@@ -79,6 +87,18 @@ def placeholders(name, bundle_id, orientation, target_name, engine_rel):
         "DESIGN_H": "720" if landscape else "1280",
         "ENGINE_REL_PATH": engine_rel,
     }
+
+
+def android_resource_string(name: str) -> str:
+    r"""Escape a name for a Groovy "..." literal that becomes an Android string resource.
+
+    The resource needs \' for apostrophes and a leading \@ / \? (else it is read as a resource
+    reference); inside the Groovy literal each backslash is doubled.
+    """
+    escaped = name.replace("'", "\\\\'")
+    if escaped[:1] in ("@", "?"):
+        escaped = "\\\\" + escaped
+    return escaped
 
 
 def render(text: str, values: dict, source: Path) -> str:
@@ -100,12 +120,16 @@ def generate(target: Path, name: str, bundle_id: str, orientation: str = "portra
     if not template_dir.is_dir():
         raise GeneratorError(f"template folder not found: {template_dir}")
 
-    target = Path(os.path.abspath(target))
+    # Resolve symlinks: CMake and Gradle compute paths from the physical directories.
+    target = Path(os.path.realpath(target))
+    engine_dir = Path(os.path.realpath(engine_dir))
+    if target == engine_dir or engine_dir in target.parents:
+        raise GeneratorError(f"'{target}' is inside the engine repo; create games next to it (e.g. ../MyGame)")
     existed = target.exists()
     if existed and (not target.is_dir() or any(target.iterdir())):
         raise GeneratorError(f"'{target}' already exists and is not an empty folder")
 
-    engine_rel = Path(os.path.relpath(os.path.abspath(engine_dir), target)).as_posix()
+    engine_rel = Path(os.path.relpath(engine_dir, target)).as_posix()
     values = placeholders(name, bundle_id, orientation, target_name, engine_rel)
 
     try:

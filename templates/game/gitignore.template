@@ -1,6 +1,7 @@
 # Build output (all CMake presets build into build/)
 /build/
 compile_commands.json
+CMakeUserPresets.json
 .cache/
 
 # Xcode

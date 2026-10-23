@@ -6,8 +6,10 @@
 # so every game always builds the current engine) and defines nova_add_game().
 include_guard(GLOBAL)
 
+# A normal variable (never cached): the engine location is re-derived on every configure, so a
+# moved/renamed engine or a different checkout is picked up instead of a stale cached path.
 get_filename_component(NOVA_ENGINE_DIR "${CMAKE_CURRENT_LIST_DIR}/.." REALPATH)
-set(NOVA_ENGINE_DIR "${NOVA_ENGINE_DIR}" CACHE PATH "Path to the nova-engine checkout" FORCE)
+message(STATUS "nova-engine: ${NOVA_ENGINE_DIR}")
 list(APPEND CMAKE_MODULE_PATH "${NOVA_ENGINE_DIR}/cmake")
 
 set(CMAKE_CXX_STANDARD 20)

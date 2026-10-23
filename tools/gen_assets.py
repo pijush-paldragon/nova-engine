@@ -5,6 +5,8 @@ Usage:
     python3 tools/gen_assets.py [--out DIR]          # write Brick Breaker's assets
     python3 tools/gen_assets.py --check [--out DIR]  # validate existing assets
     python3 tools/gen_assets.py --template-out DIR   # write the new-game template's starter assets
+    python3 tools/gen_assets.py --ios-icon-out DIR --icon-style template|brickbreaker
+                                                     # write an AppIcon.appiconset (1024 px, opaque)
 """
 
 import argparse
@@ -23,10 +25,10 @@ PADDING = 2
 # ---------------------------------------------------------------------------- images
 
 
-def write_png(path, width, height, rgba):
-    """rgba: bytearray of width*height*4."""
+def write_png(path, width, height, rgba, channels=4):
+    """rgba: bytearray of width*height*channels (4 = RGBA, 3 = RGB without alpha)."""
     raw = bytearray()
-    stride = width * 4
+    stride = width * channels
     for y in range(height):
         raw.append(0)  # filter: none
         raw += rgba[y * stride:(y + 1) * stride]
@@ -36,7 +38,8 @@ def write_png(path, width, height, rgba):
         return struct.pack(">I", len(data)) + body + struct.pack(">I", zlib.crc32(body) & 0xFFFFFFFF)
 
     png = b"\x89PNG\r\n\x1a\n"
-    png += chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 6, 0, 0, 0))
+    color_type = 6 if channels == 4 else 2
+    png += chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, color_type, 0, 0, 0))
     png += chunk(b"IDAT", zlib.compress(bytes(raw), 9))
     png += chunk(b"IEND", b"")
     with open(path, "wb") as f:
@@ -255,6 +258,68 @@ def build_template_assets(out):
     write_wav(os.path.join(out, "sfx", "tap.wav"), 44100, sfx_tap())
     print("wrote template assets to", out)
 
+# ---------------------------------------------------------------------------- iOS app icon
+
+ICON_SIZE = 1024
+BG = (0x14, 0x1A, 0x2E)
+
+
+def mix(a, b, t):
+    return tuple(int(round(a[i] + (b[i] - a[i]) * t)) for i in range(3))
+
+
+def icon_template(x, y):
+    """Dark background with the template's cyan logo (rounded square + ring)."""
+    d = ICON_SIZE * 0.62
+    ox = oy = (ICON_SIZE - d) / 2
+    lx, ly = x - ox, y - oy
+    col = BG
+    inside = coverage(rounded_rect_sdf(lx, ly, d, d, d * 0.22))
+    if inside > 0:
+        cyan = mix((0x4C, 0xC9, 0xF0), (0x2E, 0x8F, 0xB5), ly / d)
+        ring = coverage(abs(math.hypot(lx - d / 2, ly - d / 2) - d * 0.28) - d * 0.05)
+        logo = mix(cyan, (0x1F, 0x5E, 0x78), ring)
+        col = mix(col, logo, inside)
+    return col
+
+
+def icon_brickbreaker(x, y):
+    """Dark background, three brick rows, a ball and a paddle."""
+    col = BG
+    colors = [(0xFF, 0xD1, 0x66), (0xF7, 0x25, 0x85), (0x4C, 0xC9, 0xF0)]
+    bw, bh, gap, top = 200, 90, 28, 200
+    left = (ICON_SIZE - (4 * bw + 3 * gap)) / 2
+    for row in range(3):
+        for c in range(4):
+            bx, by = left + c * (bw + gap), top + row * (bh + gap)
+            cov = coverage(rounded_rect_sdf(x - bx, y - by, bw, bh, 18))
+            if cov > 0:
+                col = mix(col, colors[row], cov)
+    ball = coverage(math.hypot(x - 600, y - 640) - 52)
+    col = mix(col, (0xF0, 0xF2, 0xFA), ball)
+    paddle = coverage(rounded_rect_sdf(x - 312, y - 800, 400, 76, 38))
+    return mix(col, (0xE8, 0xEA, 0xF6), paddle)
+
+
+def build_ios_icon(out_dir, style):
+    shader = icon_template if style == "template" else icon_brickbreaker
+    pixels = bytearray(ICON_SIZE * ICON_SIZE * 3)
+    for y in range(ICON_SIZE):
+        for x in range(ICON_SIZE):
+            i = (y * ICON_SIZE + x) * 3
+            pixels[i:i + 3] = bytes(shader(x + 0.5, y + 0.5))
+    os.makedirs(out_dir, exist_ok=True)
+    # RGB, no alpha channel: App Store Connect rejects icons that have one.
+    write_png(os.path.join(out_dir, "AppIcon-1024.png"), ICON_SIZE, ICON_SIZE, pixels, channels=3)
+    with open(os.path.join(out_dir, "Contents.json"), "w") as f:
+        f.write('{\n  "images" : [\n    {\n      "filename" : "AppIcon-1024.png",\n      "idiom" : "universal",\n'
+                '      "platform" : "ios",\n      "size" : "1024x1024"\n    }\n  ],\n'
+                '  "info" : {\n    "author" : "xcode",\n    "version" : 1\n  }\n}\n')
+    catalog = os.path.dirname(os.path.normpath(out_dir))
+    with open(os.path.join(catalog, "Contents.json"), "w") as f:
+        f.write('{\n  "info" : {\n    "author" : "xcode",\n    "version" : 1\n  }\n}\n')
+    print("wrote", style, "app icon to", out_dir)
+
 # ---------------------------------------------------------------------------- check
 
 
@@ -298,7 +363,12 @@ def main():
     ap.add_argument("--out", default=DEFAULT_OUT)
     ap.add_argument("--check", action="store_true")
     ap.add_argument("--template-out", metavar="DIR")
+    ap.add_argument("--ios-icon-out", metavar="DIR", help=".../Assets.xcassets/AppIcon.appiconset")
+    ap.add_argument("--icon-style", choices=["template", "brickbreaker"], default="template")
     args = ap.parse_args()
+    if args.ios_icon_out:
+        build_ios_icon(os.path.normpath(args.ios_icon_out), args.icon_style)
+        return
     if args.template_out:
         build_template_assets(os.path.normpath(args.template_out))
         return

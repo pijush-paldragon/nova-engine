@@ -22,7 +22,7 @@ GameStudio/
 │  ├─ engine/include/nova/      public API (the only headers games may include; start with <nova/nova.hpp>)
 │  ├─ engine/src/               engine implementation
 │  ├─ engine/tests/             engine unit tests (doctest) + shared test runner support
-│  ├─ platforms/ios/            default Info.plist template and launch screen (games may override)
+│  ├─ platforms/ios/            default Info.plist template and launch screen (games override; icons live per game)
 │  ├─ platforms/android/        nova-app.gradle (shared Android build logic) + NovaActivity
 │  ├─ templates/game/           what tools/new_game.py copies into a new game
 │  ├─ games/brickbreaker/       sample game: src/, assets/, tests/, platforms/ios, platforms/android
