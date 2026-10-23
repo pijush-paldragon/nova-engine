@@ -1,5 +1,7 @@
 #include "text/text_backend.hpp"
 
+#include "core/parse.hpp"
+
 #include <nova/core/alloc_stats.hpp>
 #include <nova/core/log.hpp>
 #include <nova/ecs/components.hpp>
@@ -11,7 +13,6 @@
 
 #include <algorithm>
 #include <atomic>
-#include <charconv>
 #include <vector>
 
 namespace nova {
@@ -100,7 +101,7 @@ std::optional<FontHandle> TextBackend::loadFont(std::string_view key) {
     size_t at = key.rfind('@');
     f32 size = 0;
     if (at == std::string_view::npos ||
-        std::from_chars(key.data() + at + 1, key.data() + key.size(), size).ec != std::errc{} || size <= 0) {
+        !parseFloat(key.substr(at + 1), size) || size <= 0) {
         log::error("Font key '%.*s' must look like 'path@size'", int(key.size()), key.data());
         return std::nullopt;
     }

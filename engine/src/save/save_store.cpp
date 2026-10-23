@@ -1,3 +1,5 @@
+#include "core/parse.hpp"
+
 #include <nova/core/assert.hpp>
 #include <nova/core/log.hpp>
 #include <nova/save/save_store.hpp>
@@ -52,8 +54,7 @@ std::string unescape(std::string_view s) {
     return out;
 }
 
-template <class T>
-bool parseNumber(std::string_view text, T& out) {
+bool parseInt(std::string_view text, i64& out) {
     auto [end, ec] = std::from_chars(text.data(), text.data() + text.size(), out);
     return ec == std::errc{} && end == text.data() + text.size();
 }
@@ -99,8 +100,8 @@ bool SaveStore::load() {
         std::string_view value = line.substr(s2 + 1);
         bool ok = validKey(key);
         switch (line[0]) {
-            case 'i': { i64 v; ok = ok && parseNumber(value, v); if (ok) values_[key] = v; break; }
-            case 'f': { f64 v; ok = ok && parseNumber(value, v); if (ok) values_[key] = v; break; }
+            case 'i': { i64 v; ok = ok && parseInt(value, v); if (ok) values_[key] = v; break; }
+            case 'f': { f64 v; ok = ok && parseFloat(value, v); if (ok) values_[key] = v; break; }
             case 'b': ok = ok && (value == "0" || value == "1"); if (ok) values_[key] = value == "1"; break;
             case 's': if (ok) values_[key] = unescape(value); break;
             default: ok = false;

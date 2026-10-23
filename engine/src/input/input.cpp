@@ -1,6 +1,9 @@
 #include "input/input_internal.hpp"
 
+#include <nova/core/log.hpp>
+
 #include <SDL3/SDL_events.h>
+#include <SDL3/SDL_stdinc.h>
 
 #include <optional>
 
@@ -58,6 +61,14 @@ void InputBackend::beginFrame(f32 dt) {
 }
 
 void InputBackend::handleEvent(const SDL_Event& e, const ScreenFit& fit) {
+    static const bool logInput = SDL_getenv("NOVA_LOG_INPUT") != nullptr; // device debugging aid
+    if (logInput && e.type >= SDL_EVENT_FINGER_DOWN && e.type <= SDL_EVENT_FINGER_CANCELED) {
+        log::info("input: finger event 0x%x id=%llu at (%.3f, %.3f)", unsigned(e.type),
+                  static_cast<unsigned long long>(e.tfinger.fingerID), double(e.tfinger.x), double(e.tfinger.y));
+    } else if (logInput && (e.type == SDL_EVENT_MOUSE_BUTTON_DOWN || e.type == SDL_EVENT_MOUSE_BUTTON_UP)) {
+        log::info("input: mouse button 0x%x which=%u at (%.1f, %.1f)", unsigned(e.type), unsigned(e.button.which),
+                  double(e.button.x), double(e.button.y));
+    }
     switch (e.type) {
         case SDL_EVENT_FINGER_DOWN:
         case SDL_EVENT_FINGER_MOTION:

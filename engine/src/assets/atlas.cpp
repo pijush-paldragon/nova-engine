@@ -1,6 +1,6 @@
-#include <nova/assets/atlas.hpp>
+#include "core/parse.hpp"
 
-#include <charconv>
+#include <nova/assets/atlas.hpp>
 
 namespace nova {
 namespace {
@@ -20,10 +20,7 @@ size_t tokenize(std::string_view line, std::string_view* out, size_t max) {
     return count;
 }
 
-bool toFloat(std::string_view s, f32& out) {
-    auto [end, ec] = std::from_chars(s.data(), s.data() + s.size(), out);
-    return ec == std::errc{} && end == s.data() + s.size();
-}
+bool toFloat(std::string_view s, f32& out) { return parseFloat(s, out); }
 
 template <class Fn>
 bool forEachLine(std::string_view text, Fn&& fn) {
