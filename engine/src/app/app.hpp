@@ -70,6 +70,7 @@ private:
     FpsCounter fps_;
     u64 lastTicks_ = 0;
     i64 frameCount_ = 0;
+    i64 framesSinceTransition_ = 0;
     u64 allocsLastFrame_ = 0;
     bool overlay_ = false;
     bool backgrounded_ = false;

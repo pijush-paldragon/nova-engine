@@ -1,4 +1,5 @@
 #include <doctest/doctest.h>
+#include <nova/core/alloc_stats.hpp>
 #include <nova/ecs/components.hpp>
 #include <nova/ecs/render_bridge.hpp>
 #include <nova/ecs/world.hpp>
@@ -121,3 +122,45 @@ TEST_CASE("collectSprites skips invisible and pending-destroy sprites and applie
     REQUIRE(b.vertices().size() == 4);
     CHECK(b.vertices()[0].pos.x == doctest::Approx(100 - 40 - 5));
 }
+
+TEST_CASE("World reserve pre-sizes entity and component storage") {
+    World w;
+    CHECK(w.capacity<Marker>() < 64);
+    w.reserve<Transform, Marker>(64);
+    CHECK(w.capacity<Transform>() >= 64);
+    CHECK(w.capacity<Marker>() >= 64);
+    CHECK(w.entityCapacity() >= 64);
+}
+
+TEST_CASE("World supports empty tag components") {
+    struct Tag {};
+    World w;
+    auto e = w.spawn();
+    w.add<Tag>(e);
+    CHECK(w.has<Tag>(e));
+    int n = 0;
+    for (auto [entity] : w.view<Tag>()) n += entity == e ? 1 : 0;
+    CHECK(n == 1);
+    w.remove<Tag>(e);
+    CHECK(!w.has<Tag>(e));
+}
+
+#if defined(NOVA_TRACK_ALLOCS)
+TEST_CASE("World after reserve spawns, adds and destroys without allocating") {
+    World w;
+    w.reserve<Transform, Marker>(128);
+    memory::markGameThread();
+    for (int round = 0; round < 3; ++round) {
+        auto before = memory::allocationCount();
+        Entity es[10];
+        for (auto& e : es) {
+            e = w.spawn();
+            w.add<Transform>(e);
+            w.add<Marker>(e, Marker{1});
+        }
+        for (auto e : es) w.destroy(e);
+        w.flushDestroyed();
+        CHECK(memory::allocationCount() == before);
+    }
+}
+#endif

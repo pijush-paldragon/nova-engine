@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <atomic>
 #include <thread>
 
 using namespace nova;
@@ -82,8 +83,14 @@ TEST_CASE("allocationCount increases monotonically on the game thread") {
 
 TEST_CASE("allocationCount ignores allocations on other threads") {
     memory::markGameThread();
-    auto before = memory::allocationCount();
-    std::thread worker([] { memory::recordAllocation(); }); // e.g. a driver's background thread
+    std::atomic<bool> go{false};
+    std::thread worker([&go] { // e.g. a driver's background thread
+        while (!go.load()) {
+        }
+        memory::recordAllocation();
+    });
+    auto before = memory::allocationCount(); // measured after std::thread's own allocation
+    go.store(true);
     worker.join();
     CHECK(memory::allocationCount() == before);
 }

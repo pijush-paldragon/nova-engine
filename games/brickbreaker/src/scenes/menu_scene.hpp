@@ -2,11 +2,9 @@
 
 #include <nova/nova.hpp>
 
+// Title screen: best score, "tap to play". Starts the music on first entry.
 class MenuScene final : public nova::Scene {
 public:
     void onEnter() override;
     void onUpdate(float dt) override;
-
-private:
-    nova::Entity ball_ = nova::kNullEntity;
 };

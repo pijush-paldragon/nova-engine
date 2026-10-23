@@ -17,14 +17,13 @@ void World::destroy(Entity e) {
 }
 
 void World::flushDestroyed() {
-    // Hooks may destroy further entities; loop until nothing is pending.
-    while (!pending_.empty()) {
-        std::vector<Entity> batch;
-        batch.swap(pending_);
-        for (Entity e : batch) {
-            if (registry_.valid(e)) registry_.destroy(e);
-        }
+    // Index loop: destroy hooks may queue further entities, which are handled in this same pass.
+    // pending_ keeps its capacity, so steady-state destruction never allocates.
+    for (size_t i = 0; i < pending_.size(); ++i) {
+        Entity e = pending_[i];
+        if (registry_.valid(e)) registry_.destroy(e);
     }
+    pending_.clear();
 }
 
 size_t World::count() const {

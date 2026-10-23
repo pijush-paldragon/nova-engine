@@ -14,6 +14,10 @@ using TimerId = u32;
 // inside a callback does not fire again, even later in the same update.
 class Timers {
 public:
+    Timers() {
+        timers_.reserve(16); // gameplay timers shouldn't allocate on first use
+        pending_.reserve(16);
+    }
     TimerId after(f32 seconds, std::function<void()> fn);
     TimerId every(f32 seconds, std::function<void()> fn);
     void cancel(TimerId id);

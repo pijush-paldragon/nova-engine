@@ -45,8 +45,8 @@ void SceneStack::exitTop() {
     services_.assets->releaseScope(scope);
 }
 
-void SceneStack::applyPending() {
-    if (ops_.empty()) return;
+bool SceneStack::applyPending() {
+    if (ops_.empty()) return false;
     // Ops queued from inside onEnter/onExit are appended and handled in this same pass.
     for (size_t i = 0; i < ops_.size(); ++i) {
         Op op = ops_[i].op;
@@ -77,6 +77,7 @@ void SceneStack::applyPending() {
     ops_.clear();
     services_.assets->purgeUnreferenced();
     if (!scenes_.empty()) services_.assets->setActiveScope(scenes_.back()->scope_);
+    return true;
 }
 
 void SceneStack::clear() {

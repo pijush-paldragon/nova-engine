@@ -26,7 +26,8 @@ public:
 
     // Engine
     void pushScene(std::unique_ptr<Scene> scene) { queue(Op::Push, std::move(scene)); }
-    void applyPending();
+    // Returns true if any push/pop/replace was applied (a scene transition happened).
+    bool applyPending();
     void clear();
     Scene* top() { return scenes_.empty() ? nullptr : scenes_.back().get(); }
     size_t size() const { return scenes_.size(); }

@@ -131,6 +131,9 @@ void TextBackend::collectAndDraw(World& world, const ScreenFit& fit, Vec2 viewOr
     auto& items = impl_->drawList;
     items.clear();
     u32 order = 0;
+    // SDL_ttf lays out and uploads new glyphs to the GPU atlas inside these calls; allocations
+    // there belong to SDL/the driver. The draw list itself is pre-reserved.
+    memory::DriverAllocScope driver;
 
     for (auto [e, t, label] : world.view<Transform, TextLabel>()) {
         if (!label.visible || world.pendingDestroy(e)) continue;
@@ -171,7 +174,6 @@ void TextBackend::collectAndDraw(World& world, const ScreenFit& fit, Vec2 viewOr
     std::sort(items.begin(), items.end(), [](const DrawItem& a, const DrawItem& b) {
         return a.layer != b.layer ? a.layer < b.layer : a.order < b.order;
     });
-    memory::DriverAllocScope driver;
     for (const DrawItem& item : items) TTF_DrawRendererText(item.text, std::round(item.x), std::round(item.y));
 }
 

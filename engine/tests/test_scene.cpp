@@ -189,3 +189,15 @@ TEST_CASE("Systems run in registration order per phase") {
     w.runSystems(Phase::Update, ctx);
     CHECK(order.back() == "update");
 }
+
+TEST_CASE("SceneStack applyPending reports whether a transition happened") {
+    FakeTextures fake;
+    Assets assets = fake.makeAssets();
+    Services services{};
+    services.assets = &assets;
+    SceneStack stack{services};
+    CHECK(!stack.applyPending());
+    stack.push<Recorder>("A");
+    CHECK(stack.applyPending());
+    CHECK(!stack.applyPending());
+}

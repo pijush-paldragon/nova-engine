@@ -36,14 +36,19 @@ public:
     void flushDestroyed();
     size_t count() const;
 
+    // Returns the component (or nothing, for empty tag components such as `struct Enemy {};`).
     template <class C, class... Args>
-    C& add(Entity e, Args&&... args) {
-        C& c = registry_.emplace_or_replace<C>(e, std::forward<Args>(args)...);
-        if constexpr (std::is_same_v<C, Transform>) {
-            c.prevPos = c.pos;
-            c.prevRotation = c.rotation;
+    decltype(auto) add(Entity e, Args&&... args) {
+        if constexpr (std::is_empty_v<C>) {
+            registry_.emplace_or_replace<C>(e, std::forward<Args>(args)...);
+        } else {
+            C& c = registry_.emplace_or_replace<C>(e, std::forward<Args>(args)...);
+            if constexpr (std::is_same_v<C, Transform>) {
+                c.prevPos = c.pos;
+                c.prevRotation = c.rotation;
+            }
+            return c;
         }
-        return c;
     }
     template <class C>
     C& get(Entity e) { return registry_.get<C>(e); }
@@ -53,6 +58,25 @@ public:
     bool has(Entity e) const { return alive(e) && registry_.all_of<C>(e); }
     template <class C>
     void remove(Entity e) { if (alive(e)) registry_.remove<C>(e); }
+
+    // Pre-sizes storage for n entities (and the listed, default-constructible components) so
+    // gameplay doesn't allocate when it spawns or destroys at scale. Call from Scene::onEnter.
+    // EnTT allocates each storage's sparse index lazily, so a probe entity touches every storage
+    // once; that covers the first 4096 entity ids (one sparse page).
+    template <class... C>
+    void reserve(size_t n) {
+        registry_.storage<Entity>().reserve(n);
+        registry_.storage<PendingDestroy>().reserve(n);
+        pending_.reserve(n);
+        (registry_.storage<C>().reserve(n), ...);
+        Entity probe = registry_.create();
+        registry_.emplace<PendingDestroy>(probe);
+        (registry_.emplace<C>(probe), ...);
+        registry_.destroy(probe); // also primes every storage's removal path
+    }
+    template <class C>
+    size_t capacity() { return registry_.storage<C>().capacity(); }
+    size_t entityCapacity() { return registry_.storage<Entity>().capacity(); }
 
     // Iterate as: for (auto [entity, a, b] : world.view<A, B>()) { ... }
     template <class... C>

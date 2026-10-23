@@ -15,7 +15,8 @@ namespace {
 
 constexpr size_t kFrameArenaBytes = 1 << 20;
 constexpr f64 kMaxFrameSeconds = 0.25;
-constexpr i64 kAllocWarmupFrames = 120;
+constexpr i64 kAllocWarmupFrames = 120;      // after startup
+constexpr i64 kTransitionWarmupFrames = 60;  // after a scene change (loading may allocate)
 
 } // namespace
 
@@ -96,6 +97,7 @@ Result<void> App::init(int argc, char** argv) {
     scenes_->pushScene(config_.firstScene());
     scenes_->applyPending();
 
+    overlay_ = SDL_getenv("NOVA_DEBUG_OVERLAY") != nullptr; // also toggled by F1 / three-finger tap
     lastTicks_ = SDL_GetTicksNS();
     log::info("%s started (%s, %.0fx%.0f design)", config_.title, renderer_->backendName(),
               double(config_.designSize.x), double(config_.designSize.y));
@@ -112,8 +114,8 @@ SDL_AppResult App::iterate() {
     // Frame-limited runs (smoke tests) use a fixed dt so N frames always mean N/60 seconds of play.
     if (options_.maxFrames > 0) dt = clock_.step();
 
-    if (options_.failOnAlloc && frameCount_ == kAllocWarmupFrames && SDL_getenv("NOVA_ALLOC_TRAP")) {
-        memory::setAllocationTrap(true);
+    if (options_.failOnAlloc && SDL_getenv("NOVA_ALLOC_TRAP")) {
+        memory::setAllocationTrap(frameCount_ >= kAllocWarmupFrames && framesSinceTransition_ >= kTransitionWarmupFrames);
     }
     if (options_.maxFrames > 0 && frameCount_ + 1 == options_.maxFrames && !options_.screenshotPath.empty()) {
         renderer_->requestScreenshot(options_.screenshotPath);
@@ -123,7 +125,8 @@ SDL_AppResult App::iterate() {
     allocsLastFrame_ = memory::allocationCount() - allocsBefore;
     ++frameCount_;
 
-    if (options_.failOnAlloc && frameCount_ > kAllocWarmupFrames && allocsLastFrame_ > 0) {
+    const bool steadyState = frameCount_ > kAllocWarmupFrames && framesSinceTransition_ > kTransitionWarmupFrames;
+    if (options_.failOnAlloc && steadyState && allocsLastFrame_ > 0) {
         log::error("Frame %lld made %llu heap allocations during gameplay", static_cast<long long>(frameCount_),
                    static_cast<unsigned long long>(allocsLastFrame_));
         teardownAndCheckLeaks();
@@ -166,7 +169,8 @@ void App::runFrame(f64 dt) {
     render(*top);
 
     top->world_.flushDestroyed();
-    scenes_->applyPending();
+    if (scenes_->applyPending()) framesSinceTransition_ = 0;
+    else ++framesSinceTransition_;
     input_.beginFrame(f32(dt));
 }
 

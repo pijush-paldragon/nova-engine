@@ -6,6 +6,7 @@
 #include <nova/app/game_config.hpp>
 #include <nova/assets/assets.hpp>
 #include <nova/audio/audio.hpp>
+#include <nova/core/alloc_stats.hpp>
 #include <nova/core/assert.hpp>
 #include <nova/core/log.hpp>
 #include <nova/core/math.hpp>

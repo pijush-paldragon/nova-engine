@@ -25,4 +25,8 @@ public:
     DriverAllocScope& operator=(const DriverAllocScope&) = delete;
 };
 
+// For game code: wrap mid-scene loading (e.g. building the next level) whose allocations are
+// expected, so the --fail-on-alloc check only flags real per-frame gameplay allocations.
+using LoadingScope = DriverAllocScope;
+
 } // namespace nova::memory
