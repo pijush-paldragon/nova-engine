@@ -58,6 +58,17 @@ add_subdirectory("${NOVA_THIRD_PARTY_DIR}/box2d" "${NOVA_THIRD_PARTY_BINARY_DIR}
 # --- EnTT (header-only) -----------------------------------------------------
 add_subdirectory("${NOVA_THIRD_PARTY_DIR}/entt" "${NOVA_THIRD_PARTY_BINARY_DIR}/entt" EXCLUDE_FROM_ALL)
 
+# --- Monocypher (asset pack encryption) ---------------------------------------
+add_library(nova_monocypher STATIC "${NOVA_THIRD_PARTY_DIR}/monocypher/src/monocypher.c")
+target_include_directories(nova_monocypher PUBLIC "${NOVA_THIRD_PARTY_DIR}/monocypher/src")
+
+# --- zstd decompressor (asset pack); the nova_pack host tool builds the compressor itself ---
+file(GLOB NOVA_ZSTD_SOURCES
+    "${NOVA_THIRD_PARTY_DIR}/zstd/lib/common/*.c" "${NOVA_THIRD_PARTY_DIR}/zstd/lib/decompress/*.c")
+add_library(nova_zstd_decompress STATIC ${NOVA_ZSTD_SOURCES})
+target_include_directories(nova_zstd_decompress PUBLIC "${NOVA_THIRD_PARTY_DIR}/zstd/lib")
+target_compile_definitions(nova_zstd_decompress PRIVATE ZSTD_DISABLE_ASM ZSTD_MULTITHREAD=0)
+
 # --- doctest (desktop tests only) -------------------------------------------
 if(NOVA_BUILD_ENGINE_TESTS OR NOVA_BUILD_GAME_TESTS)
     nova_force_option(DOCTEST_WITH_TESTS OFF)
