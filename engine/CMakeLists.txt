@@ -22,7 +22,9 @@ target_link_libraries(nova
     PRIVATE SDL3::SDL3 SDL3_ttf::SDL3_ttf SDL3_mixer::SDL3_mixer box2d::box2d
             nova_monocypher nova_zstd_decompress)
 
-target_compile_definitions(nova PUBLIC $<$<CONFIG:Debug>:NOVA_DEBUG NOVA_TRACK_ALLOCS>)
+target_compile_definitions(nova PUBLIC $<$<CONFIG:Debug>:NOVA_DEBUG NOVA_TRACK_ALLOCS>
+                                       $<$<NOT:${NOVA_IS_RELEASE}>:NOVA_DEV_TOOLS>)
+nova_apply_hardening(nova)
 nova_set_warnings(nova)
 
 if(NOVA_BUILD_ENGINE_TESTS)

@@ -61,7 +61,11 @@ void InputBackend::beginFrame(f32 dt) {
 }
 
 void InputBackend::handleEvent(const SDL_Event& e, const ScreenFit& fit) {
+#if defined(NOVA_DEV_TOOLS)
     static const bool logInput = SDL_getenv("NOVA_LOG_INPUT") != nullptr; // device debugging aid
+#else
+    constexpr bool logInput = false;
+#endif
     if (logInput && e.type >= SDL_EVENT_FINGER_DOWN && e.type <= SDL_EVENT_FINGER_CANCELED) {
         log::info("input: finger event 0x%x id=%llu at (%.3f, %.3f)", unsigned(e.type),
                   static_cast<unsigned long long>(e.tfinger.fingerID), double(e.tfinger.x), double(e.tfinger.y));

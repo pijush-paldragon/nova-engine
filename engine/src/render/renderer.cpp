@@ -39,7 +39,11 @@ Vec2 Renderer2D::textureSize(TextureHandle texture) const {
 }
 
 Result<std::unique_ptr<RendererBackend>> RendererBackend::create(SDL_Window* window, Vec2 design, Color clear) {
+#if defined(NOVA_DEV_TOOLS)
     const char* requested = SDL_getenv("NOVA_RENDER_DRIVER");
+#else
+    const char* requested = nullptr;
+#endif
     const char* drivers = (requested && *requested) ? requested : defaultDriverList();
 
     SDL_SetHint(SDL_HINT_RENDER_DRIVER, drivers);

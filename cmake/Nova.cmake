@@ -36,6 +36,11 @@ else()
     option(NOVA_BUILD_GAME_TESTS "Build game test targets (nova_add_game_tests)" ON)
 endif()
 option(NOVA_SANITIZE "Enable ASan + UBSan" OFF)
+option(NOVA_PACK_ASSETS "Ship assets as an encrypted game.pak in every configuration (release ones always do)" OFF)
+# Release-type configurations: assets packed, developer switches compiled out, binaries hardened.
+set(NOVA_RELEASE_CONFIGS Release MinSizeRel RelWithDebInfo)
+set(NOVA_IS_RELEASE "$<CONFIG:Release,MinSizeRel,RelWithDebInfo>")
+set(NOVA_PACK_MODE "$<OR:${NOVA_IS_RELEASE},$<BOOL:${NOVA_PACK_ASSETS}>>")
 
 # Sanitizers must instrument everything that shares the process, third party included.
 if(NOVA_SANITIZE AND NOT MSVC)
@@ -51,5 +56,6 @@ include(NovaWarnings)
 include(NovaThirdParty)
 include(NovaGame)
 include(NovaPackTool)
+include(NovaHardening)
 
 add_subdirectory("${NOVA_ENGINE_DIR}/engine" "${CMAKE_BINARY_DIR}/nova")

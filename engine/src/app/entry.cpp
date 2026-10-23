@@ -8,7 +8,14 @@
 #include <cstdlib>
 #include <new>
 
+#if defined(NOVA_REQUIRE_PACK)
+#define NOVA_REQUIRE_PACK_VALUE 1
+#else
+#define NOVA_REQUIRE_PACK_VALUE 0
+#endif
+
 namespace nova::detail {
+void setPackRequired(bool required);
 SDL_AppResult appInit(int argc, char** argv);
 SDL_AppResult appIterate();
 SDL_AppResult appEvent(const SDL_Event& event);
@@ -17,6 +24,7 @@ void appQuit();
 
 SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
     (void)appstate;
+    nova::detail::setPackRequired(NOVA_REQUIRE_PACK_VALUE); // pack builds: a missing game.pak is tampering
     return nova::detail::appInit(argc, argv);
 }
 

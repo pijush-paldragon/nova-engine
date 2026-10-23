@@ -1,6 +1,7 @@
 # nova_add_game(<name>
 #     SOURCES <files...>
-#     ASSETS <dir>                    # copied to the bundle Resources / APK assets root
+#     ASSETS <dir>                    # staged into the bundle / APK: loose files in dev builds,
+#                                     # one encrypted game.pak in release (or NOVA_PACK_ASSETS) builds
 #     [BUNDLE_ID <id>]                # default com.gamestudio.<name>
 #     [DISPLAY_NAME <name>]           # default <name>
 #     [ORIENTATION Portrait|Landscape]
@@ -77,15 +78,27 @@ function(nova_add_game name)
     set_property(SOURCE "${NOVA_ENTRY_SOURCE}" TARGET_DIRECTORY ${target} APPEND PROPERTY
         INCLUDE_DIRECTORIES "$<TARGET_PROPERTY:${sdl_target},INTERFACE_INCLUDE_DIRECTORIES>")
 
+    nova_apply_hardening(${target})
+    # Pack builds treat a missing game.pak as tampering (see entry.cpp).
+    target_compile_definitions(${target} PRIVATE "$<${NOVA_PACK_MODE}:NOVA_REQUIRE_PACK=1>")
+
     if(APPLE)
+        # Assets are staged after linking: a plain copy in dev builds, one encrypted game.pak in
+        # pack builds. Any asset or key change relinks the target, which re-stages.
+        if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
+            set(resources_dir "$<TARGET_BUNDLE_CONTENT_DIR:${target}>")
+        else()
+            set(resources_dir "$<TARGET_BUNDLE_CONTENT_DIR:${target}>/Resources")
+        endif()
         file(GLOB_RECURSE asset_files CONFIGURE_DEPENDS "${assets_dir}/*")
-        foreach(file IN LISTS asset_files)
-            file(RELATIVE_PATH rel "${assets_dir}" "${file}")
-            get_filename_component(rel_dir "${rel}" DIRECTORY)
-            set_source_files_properties("${file}" TARGET_DIRECTORY ${target} PROPERTIES
-                MACOSX_PACKAGE_LOCATION "Resources/${rel_dir}")
-            target_sources(${target} PRIVATE "${file}")
-        endforeach()
+        set_property(TARGET ${target} APPEND PROPERTY LINK_DEPENDS
+            ${asset_files} "${key_file}" ${NOVA_PACK_TOOL_SOURCES})
+        add_custom_command(TARGET ${target} POST_BUILD
+            COMMAND ${NOVA_PACK_TOOL_UPDATE}
+            COMMAND "${CMAKE_COMMAND}" "-DPACK=${NOVA_PACK_MODE}" "-DSRC=${assets_dir}" "-DDEST=${resources_dir}"
+                    "-DTOOL=${NOVA_PACK_TOOL}" "-DKEYFILE=${key_file}" -P "${NOVA_ENGINE_DIR}/cmake/NovaStageAssets.cmake"
+            COMMENT "Staging ${name} assets"
+            VERBATIM)
 
         set_target_properties(${target} PROPERTIES
             OUTPUT_NAME "${name}"

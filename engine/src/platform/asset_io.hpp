@@ -15,6 +15,9 @@ namespace nova {
 namespace detail {
 // Defined by the build-generated key file (games) or support/test_pack_key.cpp (engine tests).
 void packKey(std::uint8_t out[32]);
+// Set by the game's entry point: true in pack builds, where a missing game.pak means tampering.
+void setPackRequired(bool required);
+bool packRequired();
 } // namespace detail
 
 enum class MountResult { Mounted, NotPresent, Corrupt };

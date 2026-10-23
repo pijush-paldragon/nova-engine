@@ -27,7 +27,15 @@ void (*&testHandler())(const char*) {
     return handler;
 }
 
+bool& packRequiredFlag() {
+    static bool required = false;
+    return required;
+}
+
 } // namespace
+
+void detail::setPackRequired(bool required) { packRequiredFlag() = required; }
+bool detail::packRequired() { return packRequiredFlag(); }
 
 void reportIntegrityFailure(const char* reason) {
 #if defined(NOVA_DEV_TOOLS)

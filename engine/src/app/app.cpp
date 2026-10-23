@@ -1,5 +1,7 @@
 #include "app/app.hpp"
 
+#include "platform/asset_io.hpp"
+
 #include <nova/core/alloc_stats.hpp>
 #include <nova/core/assert.hpp>
 #include <nova/core/log.hpp>
@@ -30,6 +32,14 @@ Result<void> App::init(int argc, char** argv) {
     options_ = parseAppOptions(argc, argv);
     config_ = configureGame();
     if (!config_.firstScene) return Result<void>::fail("GameConfig.firstScene is not set");
+
+    // Before any window: a damaged or missing pack ends the process here (reportIntegrityFailure).
+    MountResult pack = mountPack();
+    if (pack == MountResult::Corrupt) return Result<void>::fail("asset pack damaged");
+    if (pack == MountResult::NotPresent && detail::packRequired()) {
+        reportIntegrityFailure("pack missing");
+        return Result<void>::fail("asset pack missing");
+    }
 
     SDL_SetAppMetadata(config_.title, "1.0", nullptr);
     SDL_SetHint(SDL_HINT_TOUCH_MOUSE_EVENTS, "0");
@@ -98,7 +108,9 @@ Result<void> App::init(int argc, char** argv) {
     scenes_->pushScene(config_.firstScene());
     scenes_->applyPending();
 
+#if defined(NOVA_DEV_TOOLS)
     overlay_ = SDL_getenv("NOVA_DEBUG_OVERLAY") != nullptr; // also toggled by F1 / three-finger tap
+#endif
     lastTicks_ = SDL_GetTicksNS();
     log::info("%s started (%s, %.0fx%.0f design)", config_.title, renderer_->backendName(),
               double(config_.designSize.x), double(config_.designSize.y));
@@ -115,9 +127,11 @@ SDL_AppResult App::iterate() {
     // Frame-limited runs (smoke tests) use a fixed dt so N frames always mean N/60 seconds of play.
     if (options_.maxFrames > 0) dt = clock_.step();
 
+#if defined(NOVA_DEV_TOOLS)
     if (options_.failOnAlloc && SDL_getenv("NOVA_ALLOC_TRAP")) {
         memory::setAllocationTrap(frameCount_ >= kAllocWarmupFrames && framesSinceTransition_ >= kTransitionWarmupFrames);
     }
+#endif
     if (options_.maxFrames > 0 && frameCount_ + 1 == options_.maxFrames && !options_.screenshotPath.empty()) {
         renderer_->requestScreenshot(options_.screenshotPath);
     }
@@ -166,7 +180,9 @@ void App::runFrame(f64 dt) {
     top->timers_.update(f32(dt));
     top->camera_.update(f32(dt), random_);
 
+#if defined(NOVA_DEV_TOOLS)
     if (input_.keyPressed(Key::F1) || input_.threeFingerTap()) overlay_ = !overlay_;
+#endif
     render(*top);
 
     top->world_.flushDestroyed();
@@ -278,6 +294,7 @@ void App::shutdown() {
     assets_.reset();
     text_.reset();
     audio_.reset();
+    unmountPack(); // after everything that streams from it (music)
     renderer_.reset();
     window_.reset();
     if (sdlInitialized_) SDL_Quit();
