@@ -1,0 +1,46 @@
+plugins {
+    id 'com.android.application'
+}
+
+// Game repo root (holds CMakeLists.txt and assets/) and the nova-engine checkout.
+ext.novaGameRoot = file('../../..').canonicalPath
+ext.novaEngineDir = file(project.findProperty('novaEngineDir') ?: "${novaGameRoot}/../..").canonicalPath
+if (!file("${novaEngineDir}/platforms/android/nova-app.gradle").exists()) {
+    throw new GradleException("nova-engine not found at '${novaEngineDir}'. Clone it there, or pass " +
+            "-PnovaEngineDir=<path> (or set novaEngineDir=<path> in gradle.properties).")
+}
+apply from: "${novaEngineDir}/platforms/android/nova-app.gradle"
+
+// Release signing: put storeFile/storePassword/keyAlias/keyPassword in
+// platforms/android/keystore.properties (gitignored). Without it, release builds are unsigned.
+def keystoreProperties = rootProject.file('keystore.properties')
+
+android {
+    defaultConfig {
+        applicationId 'com.gamestudio.brickbreaker'
+        versionCode 1        // bump for every Play Store upload
+        versionName '1.0.0'
+        resValue 'string', 'app_name', 'Brick Breaker'
+        manifestPlaceholders.put('novaOrientation', 'sensorPortrait')
+    }
+
+    signingConfigs {
+        if (keystoreProperties.exists()) {
+            release {
+                def p = new Properties()
+                keystoreProperties.withInputStream { p.load(it) }
+                storeFile rootProject.file(p['storeFile'])
+                storePassword p['storePassword']
+                keyAlias p['keyAlias']
+                keyPassword p['keyPassword']
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            if (keystoreProperties.exists()) signingConfig signingConfigs.release
+        }
+    }
+}

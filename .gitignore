@@ -13,13 +13,15 @@ xcuserdata/
 *.dSYM.zip
 
 # Android / Gradle
-platforms/android/.gradle/
-platforms/android/**/build/
-platforms/android/.cxx/
-platforms/android/app/.cxx/
-platforms/android/.externalNativeBuild/
-platforms/android/captures/
-platforms/android/local.properties
+**/platforms/android/.gradle/
+**/platforms/android/**/build/
+**/platforms/android/.cxx/
+**/platforms/android/app/.cxx/
+**/platforms/android/.externalNativeBuild/
+**/platforms/android/captures/
+**/platforms/android/local.properties
+**/platforms/android/keystore.properties
+games/*/build/
 *.apk
 *.aab
 

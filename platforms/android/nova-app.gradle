@@ -1,0 +1,51 @@
+// Shared Android app-module configuration for every Nova game. A game's app/build.gradle sets
+// ext.novaGameRoot (the game repo root) and ext.novaEngineDir, applies this script, then sets
+// only its identity (applicationId, version, name, orientation, signing). Engine-wide Android
+// changes (SDK/NDK levels, native build, SDL glue) therefore reach every game.
+
+def gameRoot = project.ext.novaGameRoot
+def engineDir = project.ext.novaEngineDir
+
+android {
+    namespace = 'com.gamestudio.nova.host' // fixed; each game's applicationId is its real identity
+    compileSdk 36
+    ndkVersion = '28.2.13676358'
+
+    defaultConfig {
+        minSdk 24 // first Android version with Vulkan
+        targetSdk 36
+        manifestPlaceholders.put('novaRenderDriver', project.findProperty('novaRenderDriver') ?: '')
+        externalNativeBuild {
+            cmake {
+                // libc++ is linked statically: libmain.so is the only C++ library in the APK.
+                arguments '-DANDROID_STL=c++_static', '-DANDROID_PLATFORM=android-24',
+                          "-DNOVA_ENGINE_DIR=${engineDir}"
+                abiFilters 'arm64-v8a', 'x86_64'
+            }
+        }
+    }
+
+    externalNativeBuild {
+        cmake {
+            path "${gameRoot}/CMakeLists.txt"
+            version '3.30.5'
+            buildStagingDirectory "${gameRoot}/build/android-cxx"
+        }
+    }
+
+    sourceSets.main {
+        // SDL's Java glue comes straight from the engine's SDL submodule, plus NovaActivity.
+        java.srcDirs += ["${engineDir}/third_party/SDL/android-project/app/src/main/java",
+                         "${engineDir}/platforms/android/java"]
+        assets.srcDirs = ["${gameRoot}/assets"]
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    lint {
+        abortOnError = false
+    }
+}
