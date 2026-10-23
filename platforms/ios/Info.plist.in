@@ -18,9 +18,9 @@
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.0</string>
+    <string>@NOVA_VERSION@</string>
     <key>CFBundleVersion</key>
-    <string>1</string>
+    <string>@NOVA_BUILD_NUMBER@</string>
     <key>LSRequiresIPhoneOS</key>
     <true/>
     <key>UILaunchStoryboardName</key>

@@ -20,6 +20,8 @@ nova_add_game(brickbreaker
     ASSETS assets
     BUNDLE_ID com.gamestudio.brickbreaker
     DISPLAY_NAME "Brick Breaker"
-    ORIENTATION Portrait)
+    ORIENTATION Portrait
+    VERSION 1.0.0
+    BUILD_NUMBER 1)
 
 nova_add_game_tests(brickbreaker SOURCES tests/test_level.cpp src/level.cpp)
