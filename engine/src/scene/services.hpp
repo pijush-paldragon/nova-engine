@@ -5,6 +5,7 @@ namespace nova {
 class RendererBackend;
 class InputBackend;
 class Assets;
+class AudioBackend;
 class SaveStore;
 class Random;
 class FrameArena;
@@ -15,6 +16,7 @@ struct Services {
     RendererBackend* renderer = nullptr;
     InputBackend* input = nullptr;
     Assets* assets = nullptr;
+    AudioBackend* audio = nullptr;
     SaveStore* save = nullptr;
     const AppOptions* options = nullptr;
     Random* random = nullptr;

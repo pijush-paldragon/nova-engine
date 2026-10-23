@@ -2,6 +2,7 @@
 
 #include <nova/assets/asset_cache.hpp>
 #include <nova/assets/atlas.hpp>
+#include <nova/audio/audio.hpp>
 #include <nova/render/types.hpp>
 
 #include <functional>
@@ -50,6 +51,17 @@ public:
 
     TextureHandle texture(std::string_view path, ScopeId scope = kActiveScope);
     Atlas atlas(std::string_view name, ScopeId scope = kActiveScope);
+    // Invalid handle (silent playback) if the file is missing or audio is unavailable.
+    SoundHandle sound(std::string_view path, ScopeId scope = kActiveScope);
+    MusicHandle music(std::string_view path, ScopeId scope = kActiveScope);
+
+    // Engine: audio loaders are injected once the audio subsystem exists.
+    using SoundLoader = std::function<std::optional<SoundHandle>(std::string_view)>;
+    using SoundUnloader = std::function<void(SoundHandle)>;
+    using MusicLoader = std::function<std::optional<MusicHandle>(std::string_view)>;
+    using MusicUnloader = std::function<void(MusicHandle)>;
+    void setAudioLoaders(SoundLoader loadSound, SoundUnloader unloadSound, MusicLoader loadMusic,
+                         MusicUnloader unloadMusic);
 
     // Engine: scope bookkeeping driven by SceneStack.
     void setActiveScope(ScopeId scope) { activeScope_ = scope; }
@@ -75,6 +87,8 @@ private:
     ScopeId activeScope_ = kGlobalScope;
     AssetCache<TextureHandle, TextureTag> textures_;
     AssetCache<AtlasData, Atlas::Tag> atlases_;
+    std::optional<AssetCache<SoundHandle, SoundTag>> sounds_;
+    std::optional<AssetCache<MusicHandle, MusicTag>> musics_;
     std::unordered_set<std::string> reportedMissing_;
 };
 

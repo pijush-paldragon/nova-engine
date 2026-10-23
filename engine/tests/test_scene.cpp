@@ -1,4 +1,5 @@
 #include <doctest/doctest.h>
+#include <audio/audio_backend.hpp>
 #include <input/input_internal.hpp>
 #include <nova/assets/assets.hpp>
 #include <nova/core/frame_arena.hpp>
@@ -175,13 +176,14 @@ TEST_CASE("Systems run in registration order per phase") {
     Physics physics{w};
     FakeTextures fake;
     Assets assets = fake.makeAssets();
+    auto audio = AudioBackend::createUnavailable();
     Camera2D camera;
     FrameArena arena{1024};
     Random random{1};
     w.addSystem(Phase::Fixed, [](SystemContext&) { order.push_back("fixed1"); });
     w.addSystem(Phase::Update, [](SystemContext&) { order.push_back("update"); });
     w.addSystem(Phase::Fixed, [](SystemContext& ctx) { order.push_back(ctx.dt > 0 ? "fixed2" : "bad"); });
-    SystemContext ctx{w, input, physics, assets, camera, arena, random, 1.f / 60};
+    SystemContext ctx{w, input, physics, assets, *audio, camera, arena, random, 1.f / 60};
     w.runSystems(Phase::Fixed, ctx);
     CHECK(order == V{"fixed1", "fixed2"});
     w.runSystems(Phase::Update, ctx);

@@ -8,6 +8,7 @@ class World;
 class Input;
 class Physics;
 class Assets;
+class Audio;
 class Camera2D;
 class FrameArena;
 class Random;
@@ -23,6 +24,7 @@ struct SystemContext {
     Input& input;
     Physics& physics;
     Assets& assets;
+    Audio& audio;
     Camera2D& camera;
     FrameArena& frame;
     Random& random;

@@ -22,6 +22,24 @@ TextureHandle Assets::texture(std::string_view path, ScopeId scope) {
     return texture ? *texture : fallback_;
 }
 
+void Assets::setAudioLoaders(SoundLoader loadSound, SoundUnloader unloadSound, MusicLoader loadMusic,
+                             MusicUnloader unloadMusic) {
+    sounds_.emplace(std::move(loadSound), [unloadSound](SoundHandle& h) { unloadSound(h); });
+    musics_.emplace(std::move(loadMusic), [unloadMusic](MusicHandle& h) { unloadMusic(h); });
+}
+
+SoundHandle Assets::sound(std::string_view path, ScopeId scope) {
+    if (!sounds_) return {};
+    SoundHandle* h = sounds_->get(sounds_->acquire(path, resolve(scope)));
+    return h ? *h : SoundHandle{};
+}
+
+MusicHandle Assets::music(std::string_view path, ScopeId scope) {
+    if (!musics_) return {};
+    MusicHandle* h = musics_->get(musics_->acquire(path, resolve(scope)));
+    return h ? *h : MusicHandle{};
+}
+
 Atlas Assets::atlas(std::string_view name, ScopeId scope) {
     ScopeId s = resolve(scope);
     auto handle = atlases_.acquire(name, s);
@@ -68,13 +86,20 @@ SpriteRegion Assets::regionOf(Handle<Atlas::Tag> atlas, std::string_view name) {
 void Assets::releaseScope(ScopeId scope) {
     atlases_.releaseScope(scope);
     textures_.releaseScope(scope);
+    if (sounds_) sounds_->releaseScope(scope);
+    if (musics_) musics_->releaseScope(scope);
 }
 
 void Assets::purgeUnreferenced() {
     atlases_.purgeUnreferenced();
     textures_.purgeUnreferenced();
+    if (sounds_) sounds_->purgeUnreferenced();
+    if (musics_) musics_->purgeUnreferenced();
 }
 
-u32 Assets::loadedCount() const { return textures_.loadedCount() + atlases_.loadedCount(); }
+u32 Assets::loadedCount() const {
+    return textures_.loadedCount() + atlases_.loadedCount() + (sounds_ ? sounds_->loadedCount() : 0) +
+           (musics_ ? musics_->loadedCount() : 0);
+}
 
 } // namespace nova

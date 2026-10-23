@@ -1,6 +1,7 @@
 #pragma once
 
 #include "app/debug_overlay.hpp"
+#include "audio/audio_backend.hpp"
 #include "input/input_internal.hpp"
 #include "render/renderer_backend.hpp"
 #include "scene/services.hpp"
@@ -53,6 +54,7 @@ private:
     bool sdlInitialized_ = false;
     std::unique_ptr<SDL_Window, WindowDeleter> window_;
     std::unique_ptr<RendererBackend> renderer_;
+    std::unique_ptr<AudioBackend> audio_;
     std::unique_ptr<Assets> assets_;
     std::unique_ptr<SaveStore> save_;
     InputBackend input_;

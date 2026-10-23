@@ -1,5 +1,6 @@
 #include "scene/services.hpp"
 
+#include <audio/audio_backend.hpp>
 #include <input/input_internal.hpp>
 #include <nova/assets/assets.hpp>
 #include <nova/core/assert.hpp>
@@ -12,6 +13,7 @@ namespace nova {
 // ---- Scene accessors --------------------------------------------------------------------
 
 Assets& Scene::assets() { NOVA_ASSERT(services_->assets, "no Assets"); return *services_->assets; }
+Audio& Scene::audio() { NOVA_ASSERT(services_->audio, "no Audio"); return *services_->audio; }
 Input& Scene::input() { NOVA_ASSERT(services_->input, "no Input"); return *services_->input; }
 Renderer2D& Scene::renderer() { NOVA_ASSERT(services_->renderer, "no renderer"); return *services_->renderer; }
 SaveStore& Scene::save() { NOVA_ASSERT(services_->save, "no SaveStore"); return *services_->save; }

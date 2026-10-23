@@ -55,6 +55,8 @@ Result<void> App::init(int argc, char** argv) {
     if (!renderer) return Result<void>::fail(renderer.error().message);
     renderer_ = std::move(renderer.value());
 
+    audio_ = AudioBackend::create();
+
     RendererBackend* r = renderer_.get();
     assets_ = std::make_unique<Assets>(
         [r](std::string_view path) -> std::optional<TextureHandle> {
@@ -62,6 +64,11 @@ Result<void> App::init(int argc, char** argv) {
             return h.valid() ? std::optional<TextureHandle>(h) : std::nullopt;
         },
         [r](TextureHandle h) { r->destroyTexture(h); }, r->checkerboard());
+    AudioBackend* a = audio_.get();
+    assets_->setAudioLoaders([a](std::string_view p) { return a->loadSound(p); },
+                             [a](SoundHandle h) { a->unloadSound(h); },
+                             [a](std::string_view p) { return a->loadMusic(p); },
+                             [a](MusicHandle h) { a->unloadMusic(h); });
 
     char* pref = SDL_GetPrefPath(config_.org, config_.app);
     save_ = std::make_unique<SaveStore>(pref ? std::string(pref) : std::string());
@@ -71,6 +78,7 @@ Result<void> App::init(int argc, char** argv) {
     services_.renderer = renderer_.get();
     services_.input = &input_;
     services_.assets = assets_.get();
+    services_.audio = audio_.get();
     services_.save = save_.get();
     services_.options = &options_;
     services_.random = &random_;
@@ -129,7 +137,7 @@ void App::runFrame(f64 dt) {
     const f32 step = f32(clock_.step());
     const i32 steps = clock_.advance(dt);
     top->physics_.beginFrame();
-    SystemContext ctx{top->world_, input_, top->physics_, *assets_, top->camera_, frame_, random_, step};
+    SystemContext ctx{top->world_, input_, top->physics_, *assets_, *audio_, top->camera_, frame_, random_, step};
     for (i32 i = 0; i < steps; ++i) {
         top->world_.snapshotTransforms();
         top->physics_.step(step);
@@ -210,6 +218,7 @@ void App::enterBackground() {
     if (backgrounded_) return;
     backgrounded_ = true;
     if (Scene* top = scenes_ ? scenes_->top() : nullptr) top->onBackground();
+    if (audio_) audio_->pauseAll();
     if (save_) {
         if (auto r = save_->flush(); !r) log::error("%s", r.error().message.c_str());
     }
@@ -220,6 +229,7 @@ void App::enterForeground() {
     if (!backgrounded_) return;
     backgrounded_ = false;
     clock_.reset(); // don't fast-forward through the time spent in the background
+    if (audio_) audio_->resumeAll();
     lastTicks_ = SDL_GetTicksNS();
     log::info("Entered foreground");
 }
@@ -230,9 +240,10 @@ bool App::teardownAndCheckLeaks() {
     services_.assets = nullptr;
     assets_.reset();
     u32 textures = renderer_ ? renderer_->liveTextureCount() : 0;
-    bool clean = textures <= 1; // the checkerboard lives as long as the renderer
+    u32 sounds = audio_ ? audio_->liveAudioCount() : 0;
+    bool clean = textures <= 1 && sounds == 0; // the checkerboard lives as long as the renderer
     if (clean) log::info("Leak check: clean");
-    else log::error("Leak check: %u textures still alive after teardown", textures - 1);
+    else log::error("Leak check: %u textures, %u sounds still alive after teardown", textures - 1, sounds);
     return clean;
 }
 
@@ -243,6 +254,7 @@ void App::shutdown() {
     scenes_.reset(); // scenes (and their worlds) before the assets they reference
     services_.assets = nullptr;
     assets_.reset();
+    audio_.reset();
     renderer_.reset();
     window_.reset();
     if (sdlInitialized_) SDL_Quit();
