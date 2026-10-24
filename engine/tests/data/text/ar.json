@@ -1,0 +1,2 @@
+{ "language": "ar", "fonts": ["fonts/NotoSansArabic-sub.ttf"], "strings": { "menu": { "play": "العب" },
+  "hud": { "lives": { "zero": "لا أرواح", "one": "روح واحدة", "two": "روحان", "few": "{count} أرواح", "many": "{count} روحًا", "other": "{count} روح" } } } }

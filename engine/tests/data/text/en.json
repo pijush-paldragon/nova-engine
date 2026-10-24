@@ -1,0 +1,14 @@
+{
+  // English is the fallback for every other language.
+  "language": "en",
+  "strings": {
+    "menu": { "play": "Play", "settings": "Settings", "best": "Best: {score}" },
+    "hud": {
+      "score": "Score {score}",
+      "lives": { "one": "{count} life", "other": "{count} lives" },
+      "braces": "{{literal}} {score}"
+    },
+    "player": { "hello": "Hi {name}", "rich": "Hi [b]{name}[/b]" },
+    "only": { "english": "Only in English" }
+  }
+}

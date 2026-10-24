@@ -1,5 +1,7 @@
 #include "app/app.hpp"
 
+#include "text/localization_impl.hpp"
+#include "text/plural.hpp"
 #include "ui/loader.hpp"
 #include "ui/ui_backend.hpp"
 
@@ -96,6 +98,7 @@ Result<void> App::init(int argc, char** argv) {
     save_ = std::make_unique<SaveStore>(pref ? std::string(pref) : std::string());
     SDL_free(pref);
     save_->load();
+    chooseStartupLanguage();
 
     services_.renderer = renderer_.get();
     services_.input = &input_;
@@ -302,6 +305,36 @@ bool App::teardownAndCheckLeaks() {
     else log::error("Leak check: still alive after teardown: %u textures, %u sounds, %u fonts, %u labels",
                     textures > engineTextures ? textures - engineTextures : 0, sounds, fonts, labels);
     return clean;
+}
+
+void App::chooseStartupLanguage() {
+    memory::LoadingScope loading;
+    Localization& lang = text_->lang();
+    if (!lang.setLanguage("en")) return; // a game without text/en.json doesn't use translations
+    std::vector<std::string> preferred;
+#if defined(NOVA_DEV_TOOLS)
+    if (const char* forced = SDL_getenv("NOVA_LANG"); forced && *forced) preferred.emplace_back(forced);
+#endif
+    int count = 0;
+    if (SDL_Locale** locales = SDL_GetPreferredLocales(&count)) {
+        for (int i = 0; i < count; ++i) {
+            std::string tag = locales[i]->language ? locales[i]->language : "";
+            if (locales[i]->country) tag += std::string("-") + locales[i]->country;
+            if (!tag.empty()) preferred.push_back(std::move(tag));
+        }
+        SDL_free(locales);
+    }
+    std::string saved = save_->getString("language");
+#if defined(NOVA_DEV_TOOLS)
+    if (!preferred.empty() && SDL_getenv("NOVA_LANG")) saved.clear(); // the override wins in dev builds
+#endif
+    const std::string choice = chooseLanguage(lang.available(), saved, preferred);
+    if (choice != "en") lang.setLanguage(choice);
+    // From now on, a switch is the player's choice: remember it.
+    lang.impl().onChange = [this](std::string_view tag) {
+        save_->setString("language", tag);
+        (void)save_->flush();
+    };
 }
 
 void App::shutdown() {

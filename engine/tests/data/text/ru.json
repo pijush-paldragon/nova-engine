@@ -1,0 +1,2 @@
+{ "language": "ru", "strings": { "menu": { "play": "Играть" },
+  "hud": { "lives": { "one": "{count} жизнь", "few": "{count} жизни", "many": "{count} жизней", "other": "{count} жизни" } } } }

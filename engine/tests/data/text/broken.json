@@ -1,0 +1,4 @@
+{ "language": "broken", "strings": {
+    "menu": { "play": 42, "settings": "Ajustes" },
+    "hud": { "lives": { "one": "{count} x" } },
+    "player": [ "not", "an", "object" ] } }

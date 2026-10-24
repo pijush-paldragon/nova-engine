@@ -40,6 +40,7 @@ public:
     void fatal(const std::string& message);
 
 private:
+    void chooseStartupLanguage();
     struct WindowDeleter {
         void operator()(SDL_Window* w) const { SDL_DestroyWindow(w); }
     };

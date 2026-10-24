@@ -1,0 +1,2 @@
+{ "language": "ja", "fonts": ["fonts/NotoSansJP-sub.ttf"], "strings": { "menu": { "play": "プレイ" },
+  "hud": { "lives": { "other": "残機 {count}" } } } }

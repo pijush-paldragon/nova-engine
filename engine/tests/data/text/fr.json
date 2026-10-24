@@ -1,0 +1,2 @@
+{ "language": "fr", "strings": { "menu": { "play": "Jouer" },
+  "hud": { "lives": { "one": "{count} vie", "other": "{count} vies" } } } }

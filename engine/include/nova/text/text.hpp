@@ -2,6 +2,7 @@
 
 #include <nova/core/handle.hpp>
 #include <nova/core/math.hpp>
+#include <nova/text/localization.hpp>
 
 #include <memory>
 #include <string>
@@ -43,6 +44,8 @@ public:
     // Size of the string in design units.
     Vec2 measure(FontHandle font, std::string_view s) const;
     u32 rebuildsTotal() const { return rebuilds_; }
+    // Translated strings for the current language.
+    Localization& lang() { return *lang_; }
 
 protected:
     struct Impl;
@@ -52,6 +55,7 @@ protected:
     Text& operator=(const Text&) = delete;
 
     std::unique_ptr<Impl> impl_;
+    std::unique_ptr<Localization> lang_;
     u32 rebuilds_ = 0;
     f32 pixelScale_ = 1;
 };

@@ -70,7 +70,7 @@ struct Text::Impl {
     }
 };
 
-Text::Text() : impl_(std::make_unique<Impl>()) {}
+Text::Text() : impl_(std::make_unique<Impl>()), lang_(std::make_unique<Localization>()) {}
 Text::~Text() = default;
 
 Vec2 Text::measure(FontHandle font, std::string_view s) const {
