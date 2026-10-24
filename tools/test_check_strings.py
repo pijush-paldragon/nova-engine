@@ -41,6 +41,12 @@ class CheckStringsTests(unittest.TestCase):
         self.assertEqual(code, 0, out)
         self.assertIn("ok", out)
 
+    def test_comments_and_commas_outside_strings_only(self):
+        en = '{ "language": "en", /* block */ "strings": { "a": "x,]", // trailing\n "b": "http://y" , }, }'
+        de = '{ "language": "de", "strings": { "a": "x,] de", "b": "http://z" } }'
+        code, out = run({"en.json": en, "de.json": de})
+        self.assertEqual(code, 0, out)
+
     def test_reports_missing_and_extra(self):
         d = de()
         del d["strings"]["menu"]["play"]

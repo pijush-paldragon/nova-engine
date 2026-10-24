@@ -268,7 +268,8 @@ Text the player reads lives in `assets/text/<lang>.json`, one file per language 
 - **Keys:** nested objects flatten to dotted keys (`menu.play`). In a layout file, text starting
   with `@` is a key: `"text": "@menu.play"` (`@@` is a literal `@`). In code,
   `ui().label("best").setKey("menu.best", {{"score", best}})`; a world `TextLabel` has the same
-  `setKey`. Keyed text re-renders by itself when the language changes. `setText` stays literal.
+  `setKey`. Keyed text re-renders by itself when the language changes. `setText` is not
+  translated, but a UI label still reads it as rich text, and as a key if it starts with `@`.
   `{name}` placeholders take `i64`, `f64` or `string_view` values; `{{` is a literal brace.
 - **Plurals:** an object of `zero one two few many other` forms is a plural entry. Pass the
   number as `count`: `setKey("hud.lives", {{"count", lives}})` picks the right form for the
@@ -329,8 +330,10 @@ A label whose text contains tags is laid out as rich text:
   resizes it.
 - Tags nest; `[[` is a literal `[`. A tag that is unknown, misspelled or never closed shows as
   written and logs once in debug builds.
-- Placeholder values are escaped, so a player's name like `[color=red]x` shows as typed and
-  can't add tags.
+- Text the player typed (a name) must not become tags. Pass it as a `setKey` argument: values
+  are escaped, so `[color=red]x` shows as typed. If you format into your own buffer for a UI
+  label, pass `markup` = true: `text().lang().format(buf, "hud.hello", {{"name", name}}, true)`.
+  Don't `setText` player text directly.
 
 ### Right-to-left languages
 
@@ -347,8 +350,9 @@ direction.
 ### Performance
 
 Loading a language, switching, and a label's first layout are setup work. A keyed HUD label
-updated every frame allocates nothing (its values are stored inline: up to 4 arguments, text
-values up to 31 bytes). Rich text re-parses when its text changes, so keep it for menus rather
+updated every frame allocates nothing (its values are stored inline: up to 4 arguments with
+names up to 15 bytes, text values up to 31 bytes, cut at a character boundary; format longer
+values yourself with `format(..., true)`). Rich text re-parses when its text changes, so keep it for menus rather
 than a per-frame counter.
 
 ## The rules of the engine

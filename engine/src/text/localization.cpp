@@ -72,8 +72,6 @@ bool isPluralObject(yyjson_val* obj) {
     return true;
 }
 
-bool hasMarkup(std::string_view tmpl) { return tmpl.find('[') != std::string_view::npos; }
-
 struct Writer {
     std::span<char> out;
     size_t n = 0;
@@ -280,9 +278,9 @@ std::string_view Localization::get(std::string_view key) const {
     return missing.emplace(std::string(key), "[" + std::string(key) + "]").first->second;
 }
 
-size_t Localization::format(std::span<char> out, std::string_view key, std::initializer_list<FormatArg> args) const {
-    const std::string_view tmpl = get(key);
-    return fill(out, tmpl, std::span<const FormatArg>(args.begin(), args.size()), nullptr, hasMarkup(tmpl));
+size_t Localization::format(std::span<char> out, std::string_view key, std::initializer_list<FormatArg> args,
+                            bool markup) const {
+    return formatArgs(out, key, std::span<const FormatArg>(args.begin(), args.size()), markup);
 }
 
 size_t Localization::formatArgs(std::span<char> out, std::string_view key, std::span<const FormatArg> args,
@@ -291,11 +289,10 @@ size_t Localization::formatArgs(std::span<char> out, std::string_view key, std::
     for (const FormatArg& a : args) {
         if (a.name != "count") continue;
         if (const i64* count = std::get_if<i64>(&a.value)) {
-            if (const std::string* form = pluralForm(key, *count)) return fill(out, *form, args, nullptr, markup || hasMarkup(*form));
+            if (const std::string* form = pluralForm(key, *count)) return fill(out, *form, args, nullptr, markup);
         }
     }
-    const std::string_view tmpl = get(key);
-    return fill(out, tmpl, args, nullptr, markup || hasMarkup(tmpl));
+    return fill(out, get(key), args, nullptr, markup);
 }
 
 const std::string* Localization::pluralForm(std::string_view key, i64 count) const {
@@ -315,8 +312,10 @@ bool KeyArgs::assign(std::initializer_list<FormatArg> args) {
     for (const FormatArg& a : args) {
         if (next.count == kMax) break;
         Stored& s = next.items[next.count++];
-        const size_t n = std::min(a.name.size(), sizeof s.name - 1);
-        std::memcpy(s.name, a.name.data(), n);
+        if (a.name.size() > sizeof s.name - 1) {
+            logOnce("argname", a.name, "text: argument name \"" + std::string(a.name) + "\" is longer than 15 bytes");
+        }
+        std::memcpy(s.name, a.name.data(), std::min(a.name.size(), sizeof s.name - 1));
         if (const i64* i = std::get_if<i64>(&a.value)) {
             s.kind = 0;
             s.i = *i;
@@ -326,7 +325,12 @@ bool KeyArgs::assign(std::initializer_list<FormatArg> args) {
         } else {
             s.kind = 2;
             const std::string_view v = std::get<std::string_view>(a.value);
-            std::memcpy(s.s, v.data(), std::min(v.size(), sizeof s.s - 1));
+            // Cut long values on a character boundary, never inside a UTF-8 sequence.
+            size_t n = std::min(v.size(), sizeof s.s - 1);
+            if (n < v.size()) {
+                while (n > 0 && (u8(v[n]) & 0xC0) == 0x80) --n;
+            }
+            std::memcpy(s.s, v.data(), n);
         }
     }
     bool changed = next.count != count;
@@ -351,11 +355,11 @@ size_t KeyArgs::view(std::array<FormatArg, kMax>& out) const {
 }
 
 size_t Localization::plural(std::span<char> out, std::string_view key, i64 count,
-                            std::initializer_list<FormatArg> args) const {
+                            std::initializer_list<FormatArg> args, bool markup) const {
     const FormatArg countArg{"count", count};
     const std::span<const FormatArg> list(args.begin(), args.size());
-    if (const std::string* s = pluralForm(key, count)) return fill(out, *s, list, &countArg, hasMarkup(*s));
-    return fill(out, get(key), list, &countArg, false);
+    if (const std::string* s = pluralForm(key, count)) return fill(out, *s, list, &countArg, markup);
+    return fill(out, get(key), list, &countArg, markup);
 }
 
 bool Localization::setLanguage(std::string_view lang) {

@@ -57,8 +57,9 @@ const char* textPtr(std::string_view s) { return s.empty() ? "" : s.data(); }
 
 bool TextBlock::set(const TextBlockParams& p) {
     if (p.fonts.empty()) return false;
+    const f32 lineSpacing = p.lineSpacing > 0 ? p.lineSpacing : 1;
     if (laidOut_ && fontGeneration_ == backend_->fontGeneration() && p.text == text_ && p.wrapWidth == wrapWidth_ &&
-        p.maxLines == maxLines_ && p.lineSpacing == lineSpacing_ && p.fitBox == fitBox_ && p.rtl == rtl_ &&
+        p.maxLines == maxLines_ && lineSpacing == lineSpacing_ && p.fitBox == fitBox_ && p.rtl == rtl_ &&
         fonts_ == p.fonts && (p.rich != nullptr) == hadResolver_ && p.richRevision == richRevision_) {
         return true;
     }
@@ -67,7 +68,7 @@ bool TextBlock::set(const TextBlockParams& p) {
     fonts_.assign(p.fonts);
     wrapWidth_ = p.wrapWidth;
     maxLines_ = p.maxLines;
-    lineSpacing_ = p.lineSpacing > 0 ? p.lineSpacing : 1;
+    lineSpacing_ = lineSpacing;
     fitBox_ = p.fitBox;
     rtl_ = p.rtl;
     hadResolver_ = p.rich != nullptr;
@@ -86,6 +87,7 @@ bool TextBlock::set(const TextBlockParams& p) {
 
 bool TextBlock::layout() {
     laidOut_ = false;
+    color_ = {0, 0, 0, 0}; // text objects made or re-pointed below take the colour on the next draw
     fontGeneration_ = backend_->fontGeneration();
     lines_.clear();
     linesDirty_ = true;
@@ -302,7 +304,10 @@ void TextBlock::releaseRich() {
 // pieces too: each piece is shaped with one font (aligned on a shared baseline) and right-to-left
 // lines place words right to left while numbers keep their own order.
 bool TextBlock::needsPieces() const {
-    if (rtl_) return !text_.empty();
+    if (text_.empty()) return false;
+    // Right-to-left letters need word ordering (a one-run text object would reverse numbers in
+    // them); text without them ("+10", "Score 20") reads the same in any language.
+    if (strongDirection(text_) < 0) return true;
     std::array<TTF_Font*, 8> buf{};
     return !firstFontCovers(backend_->fontChain(fonts_[0], buf), text_);
 }
@@ -389,6 +394,7 @@ bool TextBlock::measurePiece(size_t i, size_t step) {
     }
     const std::string_view text(richText_.data() + p.begin, visible - p.begin);
     const std::string_view spaces(richText_.data() + visible, p.end - visible);
+    memory::DriverAllocScope driver; // SDL_ttf text objects and layout
     if (pieceTexts_.size() <= i) pieceTexts_.resize(i + 1);
     if (!pieceTexts_[i]) {
         pieceTexts_[i] = backend_->createText(font, text);
@@ -413,7 +419,6 @@ bool TextBlock::shapeRich(size_t step) {
     TTF_Font* base = backend_->ttfFont(fonts_[step]);
     if (!base) return false;
     fontIndex_ = step;
-    memory::DriverAllocScope driver; // SDL_ttf layout and its text objects
     richText_.resize(richTextLen_);  // drop an earlier ellipsis
     pieces_.clear();
     for (u32 ri = 0; ri < runs_.size(); ++ri) {
@@ -447,7 +452,10 @@ bool TextBlock::shapeRich(size_t step) {
             pos = end;
         }
     }
-    if (pieceTexts_.size() > pieces_.size() + 1) pieceTexts_.resize(pieces_.size() + 1); // +1: an ellipsis
+    if (pieceTexts_.size() > pieces_.size() + 1) {
+        memory::DriverAllocScope driver; // frees text objects
+        pieceTexts_.resize(pieces_.size() + 1); // +1: an ellipsis
+    }
     for (size_t i = 0; i < pieces_.size(); ++i) {
         if (!measurePiece(i, step)) return false;
     }
@@ -551,7 +559,6 @@ void TextBlock::applyRichEllipsis(size_t step) {
     if (maxLines_ <= 0 || richLines_.size() <= size_t(maxLines_)) return;
     TTF_Font* base = backend_->ttfFont(fonts_[step]);
     if (!base) return;
-    memory::DriverAllocScope driver;
     RichLine& last = richLines_[size_t(maxLines_ - 1)];
     pieces_.resize(last.first + last.count);
     richLines_.resize(size_t(maxLines_));
@@ -585,6 +592,7 @@ void TextBlock::applyRichEllipsis(size_t step) {
         const size_t tail = last.first + last.count - 1;
         if (pieces_[tail].x + pieces_[tail].width + dotsWidth <= wrapPx + 0.5f) break;
         pieces_.erase(pieces_.begin() + long(tail));
+        memory::DriverAllocScope driver; // frees a text object
         pieceTexts_.erase(pieceTexts_.begin() + long(tail));
         --last.count;
     }

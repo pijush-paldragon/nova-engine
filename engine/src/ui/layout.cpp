@@ -213,12 +213,22 @@ u32 arrangeLayer(ElementStore& store, UiHandle root, const LayoutEnv& env, std::
                 return preferred(size, measured, lo, hi);
             };
             Rect box{};
+            // Mirroring reflects the child within the content box: rows reverse, justify and
+            // column start/end swap. A row or column places its children by its own direction;
+            // in a stack the child's anchor follows the child's. Boxes are worked out unmirrored;
+            // safe-area growth looks at where the box will actually land.
+            c.mirrored = parent.mirrored && s.mirror;
+            const bool flip = mode == LayoutMode::Stack ? c.mirrored : parent.mirrored;
+            auto reflect = [&](Rect r) {
+                if (flip) r.x = content.x + content.w - (r.x - content.x) - r.w;
+                return r;
+            };
             if (mode == LayoutMode::Stack) {
                 box.w = axis(s.width, c.measured.x, s.minWidth, s.maxWidth, content.w);
                 box.h = axis(s.height, c.measured.y, s.minHeight, s.maxHeight, content.h);
                 box.x = content.x + (content.w - box.w) * anchorX(s.anchor);
                 box.y = content.y + (content.h - box.h) * anchorY(s.anchor);
-                if (const Vec2 grow = safeGrowth(c, box, env); grow.x > 0 || grow.y > 0) {
+                if (const Vec2 grow = safeGrowth(c, reflect(box), env); grow.x > 0 || grow.y > 0) {
                     box.w += grow.x; // re-anchored, so the anchored edge stays put
                     box.h += grow.y;
                     box.x = content.x + (content.w - box.w) * anchorX(s.anchor);
@@ -242,7 +252,7 @@ u32 arrangeLayer(ElementStore& store, UiHandle root, const LayoutEnv& env, std::
                                                                   : 0;
                 if (row) box = {content.x + cursor, content.y + crossPos, mainLen, crossLen};
                 else box = {content.x + crossPos, content.y + cursor, crossLen, mainLen};
-                if (const Vec2 grow = safeGrowth(c, box, env); grow.x > 0 || grow.y > 0) {
+                if (const Vec2 grow = safeGrowth(c, reflect(box), env); grow.x > 0 || grow.y > 0) {
                     mainLen += row ? grow.x : grow.y; // grows away from its start
                     crossLen += row ? grow.y : grow.x;
                     crossPos = parent.spec.align == Align::Center ? (crossSpace - crossLen) * 0.5f
@@ -253,14 +263,7 @@ u32 arrangeLayer(ElementStore& store, UiHandle root, const LayoutEnv& env, std::
                 }
                 cursor += mainLen + gap;
             }
-            // Mirroring reflects the child within the content box: rows reverse, justify and
-            // column start/end swap. A row or column places its children by its own direction;
-            // in a stack the child's anchor follows the child's.
-            c.mirrored = parent.mirrored && s.mirror;
-            if (mode == LayoutMode::Stack ? c.mirrored : parent.mirrored) {
-                box.x = content.x + content.w - (box.x - content.x) - box.w;
-            }
-            c.box = snap(box);
+            c.box = snap(reflect(box));
             stack.push_back(ch);
         });
     }

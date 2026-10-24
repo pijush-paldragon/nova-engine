@@ -158,8 +158,13 @@ TEST_CASE("Placeholder values never inject tags or placeholders") {
     REQUIRE(fx.el(rich).text->pieceCount() >= 2);
 
     char buf[128];
-    const size_t n = fx.text->lang().format(buf, "player.rich", {{"name", "[b]"}});
+    // Formatting for a UI label (which reads markup) escapes values; for other uses it doesn't.
+    size_t n = fx.text->lang().format(buf, "player.rich", {{"name", "[b]"}}, true);
     CHECK(std::string_view(buf, n) == "Hi [b][[b][/b]");
+    n = fx.text->lang().format(buf, "player.hello", {{"name", "[b]"}}, true);
+    CHECK(std::string_view(buf, n) == "Hi [[b]");
+    n = fx.text->lang().format(buf, "player.rich", {{"name", "[x"}});
+    CHECK(std::string_view(buf, n) == "Hi [b][x[/b]");
 }
 
 TEST_CASE("Label switches between empty, plain and rich text cleanly") {
@@ -336,4 +341,52 @@ TEST_CASE("Left-to-right runs keep their order in right-to-left lines") {
     CHECK(brick.x < breaker.x);                                       // "Brick Breaker 2" reads left to right
     CHECK(breaker.x < two.x);
     CHECK(two.x + two.w < arabic.x);
+}
+
+namespace {
+int countColour(TextBlock& block, UiFixture& fx, Color want) {
+    const ScreenFit& fit = fx.renderer->fit();
+    fx.renderer->beginFrame();
+    block.draw({fit.visible.x + 20, fit.visible.y + 20}, 600, TextAlignH::Left, fit, want, 1);
+    SDL_Surface* shot = SDL_RenderReadPixels(fx.renderer->sdl(), nullptr);
+    SDL_Surface* rgba = SDL_ConvertSurface(shot, SDL_PIXELFORMAT_RGBA32);
+    SDL_DestroySurface(shot);
+    int n = 0, white = 0;
+    for (int y = 0; y < rgba->h; ++y) {
+        const u8* row = static_cast<const u8*>(rgba->pixels) + size_t(y) * size_t(rgba->pitch);
+        for (int x = 0; x < rgba->w; ++x) {
+            const u8* px = row + x * 4;
+            if (std::abs(px[0] - want.r) < 40 && std::abs(px[1] - want.g) < 40 && std::abs(px[2] - want.b) < 40 &&
+                (px[0] | px[1] | px[2]) != 0)
+                ++n;
+            if (px[0] > 200 && px[1] > 200 && px[2] > 200) ++white;
+        }
+    }
+    SDL_DestroySurface(rgba);
+    fx.renderer->endFrame();
+    return white > 0 ? -white : n;
+}
+} // namespace
+
+TEST_CASE("Text keeps its colour across re-layouts") {
+    RichFixture fx;
+    const Color blue{40, 80, 255, 255};
+    TextBlock block(*fx.text);
+    REQUIRE(block.set(fx.params("[color=#ff0000]RED[/color]")));
+    countColour(block, fx, blue);
+    REQUIRE(block.set(fx.params("plain text now"))); // new paragraph object
+    CHECK(countColour(block, fx, blue) > 20);
+    REQUIRE(block.set(fx.params("MORE [b]PIECES[/b] HERE NOW"))); // new piece objects
+    CHECK(countColour(block, fx, blue) > 20);
+}
+
+TEST_CASE("Non-positive line spacing never re-lays out unchanged text") {
+    RichFixture fx;
+    TextBlock block(*fx.text);
+    TextBlockParams p = fx.params("Some text");
+    p.lineSpacing = 0;
+    REQUIRE(block.set(p));
+    const u32 rebuilds = fx.text->rebuildsTotal();
+    block.set(p);
+    CHECK(fx.text->rebuildsTotal() == rebuilds);
 }

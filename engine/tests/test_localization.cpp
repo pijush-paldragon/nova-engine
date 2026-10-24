@@ -154,3 +154,13 @@ TEST_CASE("Bad language file entries fall back per key") {
     CHECK(broken.lang.get("player.hello") == "Hi {name}"); // array instead of object: English
     CHECK(logs.count("text/broken.json") >= 3);
 }
+
+TEST_CASE("Long key argument values are cut on a character boundary") {
+    KeyArgs args;
+    args.assign({{"name", std::string_view("あいうえおかきくけこさしすせそ")}}); // 45 bytes
+    std::array<FormatArg, KeyArgs::kMax> out;
+    REQUIRE(args.view(out) == 1);
+    const std::string_view v = std::get<std::string_view>(out[0].value);
+    CHECK(v.size() == 30); // 10 whole characters fit in 31 bytes
+    CHECK(v == "あいうえおかきくけこ");
+}

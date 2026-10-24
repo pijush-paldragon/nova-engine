@@ -18,10 +18,50 @@ CATEGORIES = ["zero", "one", "two", "few", "many", "other"]
 STYLE_TAGS = {"b", "i", "color", "size", "style"}
 
 
+def strip_json5(text):
+    """Removes // and /* */ comments and trailing commas outside strings (yyjson accepts them)."""
+    out, i, n = [], 0, len(text)
+    while i < n:
+        c = text[i]
+        if c == '"':
+            j = i + 1
+            while j < n and text[j] != '"':
+                j += 2 if text[j] == "\\" else 1
+            out.append(text[i:j + 1])
+            i = j + 1
+        elif text.startswith("//", i):
+            while i < n and text[i] != "\n":
+                i += 1
+        elif text.startswith("/*", i):
+            end = text.find("*/", i + 2)
+            i = n if end < 0 else end + 2
+        elif c == ",":
+            j = i + 1
+            # A comma followed (past spaces and comments) by } or ] is a trailing comma.
+            k = j
+            while k < n:
+                if text[k].isspace():
+                    k += 1
+                elif text.startswith("//", k):
+                    while k < n and text[k] != "\n":
+                        k += 1
+                elif text.startswith("/*", k):
+                    end = text.find("*/", k + 2)
+                    k = n if end < 0 else end + 2
+                else:
+                    break
+            if k >= n or text[k] not in "}]":
+                out.append(c)
+            i = j
+        else:
+            out.append(c)
+            i += 1
+    return "".join(out)
+
+
 def load(path):
-    """JSON with // comment lines and trailing commas, as the engine's loader accepts."""
-    text = "\n".join(l for l in path.read_text(encoding="utf-8").splitlines() if not l.strip().startswith("//"))
-    return json.loads(re.sub(r",(\s*[}\]])", r"\1", text))
+    """JSON with comments and trailing commas, as the engine's loader accepts."""
+    return json.loads(strip_json5(path.read_text(encoding="utf-8")))
 
 
 def plural_category(tag, n):

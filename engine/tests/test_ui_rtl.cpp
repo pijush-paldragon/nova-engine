@@ -177,3 +177,23 @@ TEST_CASE("Sliders, switches and progress bars run right to left") {
     CHECK(hi == doctest::Approx(box.right()).epsilon(0.01));
     CHECK(lo == doctest::Approx(box.right() - box.w * 0.25f).epsilon(0.01));
 }
+
+TEST_CASE("Safe-area growth follows the mirrored position") {
+    RtlFixture fx;
+    ElementStore& store = fx.canvas.impl().store;
+    UiSpec panelSpec;
+    panelSpec.safeArea = true;
+    const UiHandle panel = store.add(store.layerRoot(0), Kind::Panel, panelSpec);
+    UiSpec childSpec;
+    childSpec.width = Size::px(100);
+    childSpec.height = Size::px(100);
+    const UiHandle child = store.add(panel, Kind::Panel, childSpec);
+    // A cutout on the left only (e.g. landscape): 50 units of inset on that side.
+    LayoutEnv env{{0, 0, 720, 1280}, {50, 0, 670, 1280}, 1, false};
+    layoutCanvas(store, env, nullptr, nullptr);
+    CHECK(store.get(child)->box.x == doctest::Approx(50));
+    env.rtl = true;
+    layoutCanvas(store, env, nullptr, nullptr);
+    CHECK(store.get(panel)->box.w == doctest::Approx(100)); // the right edge has no inset
+    CHECK(store.get(child)->box.x == doctest::Approx(620));
+}
