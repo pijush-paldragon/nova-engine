@@ -208,7 +208,10 @@ void prepareElement(Canvas::Impl& impl, Element& e, const UiShared& shared) {
         }
         e.region = {};
         if (impl.services->assets) {
-            const std::string& sprite = e.kind == Kind::Image ? e.spec.sprite : e.spec.icon;
+            const bool rtl = impl.services->text && impl.services->text->lang().rightToLeft();
+            const std::string& sprite = e.kind != Kind::Image          ? e.spec.icon
+                                        : rtl && !e.spec.spriteRtl.empty() ? e.spec.spriteRtl
+                                                                           : e.spec.sprite;
             e.region = resolveSprite(*impl.services->assets, sprite, impl.scope);
         }
         e.resolveDirty = false;
@@ -257,7 +260,9 @@ void refreshLayout(Canvas::Impl& impl) {
     const u32 langGen = impl.services->text ? impl.services->text->lang().generation() : 0;
     // A new theme or language: every element re-resolves (fonts follow the language too).
     const bool themeChanged = impl.themeGen != shared.theme.generation() || impl.langGen != langGen;
+    const bool langChanged = impl.langGen != langGen;
     store.forEach([&](UiHandle, Element& e) {
+        if (langChanged) e.resolveDirty = true; // fonts carry the language; images may have spriteRtl
         if (themeChanged || e.resolveDirty || store.dirty(e.layer)) prepareElement(impl, e, shared);
     });
     if (themeChanged) {
@@ -266,7 +271,8 @@ void refreshLayout(Canvas::Impl& impl) {
         impl.langGen = langGen;
     }
     const RendererBackend& r = *impl.services->renderer;
-    layoutCanvas(store, LayoutEnv{r.visibleRect(), r.safeArea(), r.pixelScale()}, &measureElement, &impl);
+    const bool rtl = impl.services->text && impl.services->text->lang().rightToLeft();
+    layoutCanvas(store, LayoutEnv{r.visibleRect(), r.safeArea(), r.pixelScale(), rtl}, &measureElement, &impl);
 }
 
 // ---- Draw list ------------------------------------------------------------------------------
@@ -438,8 +444,9 @@ void buildLayer(Canvas::Impl& impl, u16 layer, DrawLayer& out, std::vector<Frame
         // This element's local transform (offset, then scale about its centre), under its parent's.
         // The pressed scale eases in over 0.08 s (pressAmount).
         const f32 s = e.scale * (restScale + (pressScale - restScale) * e.pressAmount);
-        const Vec2 c = e.box.center() + e.spec.offset;
-        const Vec2 localT = c + (e.spec.offset - c) * s;
+        const Vec2 offset = visualOffset(e);
+        const Vec2 c = e.box.center() + offset;
+        const Vec2 localT = c + (offset - c) * s;
         const Xf xf{f.xf.s * s, localT * f.xf.s + f.xf.t};
         const f32 opacity = f.opacity * e.spec.opacity * *style.opacity;
 
@@ -472,7 +479,8 @@ void buildLayer(Canvas::Impl& impl, u16 layer, DrawLayer& out, std::vector<Frame
         }
         if (e.text && !e.text->empty()) {
             const Vec2 size = e.text->size();
-            const TextAlignH align = e.kind == Kind::Button ? TextAlignH::Center : e.spec.textAlign;
+            // Start/End follow the element's direction, so a "mirror": false subtree stays left to right.
+            const TextAlignH align = e.kind == Kind::Button ? TextAlignH::Center : resolveAlign(e.spec.textAlign, e.mirrored);
             const Rect box{textArea.x, textArea.y + (textArea.h - size.y) * 0.5f, textArea.w, size.y};
             out.texts.push_back({e.text.get(), box, xf.apply({box.x, box.y}), xf.s,
                                  modulate(*style.textColor, Color::White, opacity), align});

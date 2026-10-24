@@ -55,6 +55,7 @@ struct UiSpec {
     std::string style{};
     std::string text{};
     std::string sprite{};
+    std::string spriteRtl{}; // image: drawn instead of `sprite` in right-to-left languages
     std::string icon{};
 
     Size width = Size::fit();
@@ -75,8 +76,11 @@ struct UiSpec {
     bool enabled = true;
     f32 opacity = 1;
     bool blocksInput = false;
+    // Right-to-left languages mirror the layout (rows reverse; anchors, start/end, padding and
+    // offset.x swap sides). false keeps this element and its subtree as authored.
+    bool mirror = true;
 
-    TextAlignH textAlign = TextAlignH::Left;
+    TextAlignH textAlign = TextAlignH::Start;
     bool wrap = false;       // labels and buttons: break lines at the content width
     i32 maxLines = 0;        // 0 = no limit; overflow ends with "…"
     Overflow overflow = Overflow::Clip;

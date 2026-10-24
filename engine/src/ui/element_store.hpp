@@ -35,6 +35,7 @@ struct Element {
     Rect box{};           // laid-out box, design units (before offset/scale, which are visual)
     Vec2 measured{};      // content size for fit axes, padding included
     Insets padding;       // effective padding: the spec's, else the style's
+    bool mirrored = false; // laid out right to left (rtl language, and no "mirror": false above)
 
     // Visual state and caches resolved from the style (draw.cpp).
     f32 scale = 1;        // animated scale; the style's scale applies on top at draw
@@ -59,11 +60,17 @@ struct Element {
     bool keyDirty = true;
 };
 
+// The element's offset as drawn: offset.x points the other way when mirrored.
+inline Vec2 visualOffset(const Element& e) {
+    return e.mirrored ? Vec2{-e.spec.offset.x, e.spec.offset.y} : e.spec.offset;
+}
+
 // Screen metrics layout depends on.
 struct LayoutEnv {
     Rect root;      // every layer's root box: the visible screen, design units
     Rect safeArea;  // design units
     f32 pixelScale = 1;
+    bool rtl = false; // the language reads right to left
     bool operator==(const LayoutEnv&) const = default;
 };
 

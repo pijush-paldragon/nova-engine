@@ -59,9 +59,9 @@ constexpr EnumName<Transition> kTransitions[] = {
     {"slide-right", Transition::SlideRight}};
 
 constexpr const char* kElementKeys[] = {
-    "type",     "id",       "style",       "text",     "sprite",      "icon",      "width",    "height",
+    "type",     "id",       "style",       "text",     "sprite",      "spriteRtl", "icon",     "width",    "height",
     "minWidth", "maxWidth", "minHeight",   "maxHeight", "anchor",     "offset",    "layout",   "gap",
-    "padding",  "justify",  "align",       "safeArea", "visible",     "enabled",   "opacity",  "blocksInput",
+    "padding",  "justify",  "align",       "safeArea", "visible",     "enabled",   "opacity",  "blocksInput", "mirror",
     "textAlign", "wrap",    "maxLines",    "overflow", "minScale",    "lineSpacing", "fit",    "slice",
     "tint",     "look",     "on",          "min",      "max",         "step",      "value",    "direction",
     "animate",  "children", "include",     "enter",    "exit"};
@@ -236,6 +236,7 @@ struct LayoutParser {
             else if (key == "style") r.string(v, key, s.style);
             else if (key == "text") r.string(v, key, s.text);
             else if (key == "sprite") r.string(v, key, s.sprite);
+            else if (key == "spriteRtl") r.string(v, key, s.spriteRtl);
             else if (key == "icon") r.string(v, key, s.icon);
             else if (key == "width") r.size(v, key, s.width);
             else if (key == "height") r.size(v, key, s.height);
@@ -255,6 +256,7 @@ struct LayoutParser {
             else if (key == "enabled") r.boolean(v, key, s.enabled);
             else if (key == "opacity") r.number(v, key, s.opacity);
             else if (key == "blocksInput") r.boolean(v, key, s.blocksInput);
+            else if (key == "mirror") r.boolean(v, key, s.mirror);
             else if (key == "textAlign") r.choice(v, key, kTextAlign, s.textAlign);
             else if (key == "wrap") r.boolean(v, key, s.wrap);
             else if (key == "maxLines") r.integer(v, key, s.maxLines);

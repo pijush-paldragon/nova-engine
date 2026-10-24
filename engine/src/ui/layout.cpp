@@ -30,6 +30,7 @@ f32 preferred(const Size& s, f32 measured, f32 lo, f32 hi) {
 
 Insets paddingOf(const Element& e, const LayoutEnv& env, const Rect& box) {
     Insets p = e.padding;
+    if (e.mirrored) std::swap(p.left, p.right); // safe-area insets below stay physical
     if (e.spec.safeArea) {
         const Rect& s = env.safeArea;
         p.left += std::max(0.f, s.x - box.x);
@@ -149,7 +150,9 @@ void measureLayer(ElementStore& store, UiHandle root, MeasureFn measure, void* c
 // Pass 2, top-down: final boxes.
 u32 arrangeLayer(ElementStore& store, UiHandle root, const LayoutEnv& env, std::vector<UiHandle>& stack) {
     const Snap snap{env.pixelScale > 0 ? env.pixelScale : 1};
-    store.get(root)->box = env.root;
+    Element& rootEl = *store.get(root);
+    rootEl.box = env.root;
+    rootEl.mirrored = env.rtl && rootEl.spec.mirror;
     u32 count = 0;
     stack.clear();
     stack.push_back(root);
@@ -250,6 +253,13 @@ u32 arrangeLayer(ElementStore& store, UiHandle root, const LayoutEnv& env, std::
                 }
                 cursor += mainLen + gap;
             }
+            // Mirroring reflects the child within the content box: rows reverse, justify and
+            // column start/end swap. A row or column places its children by its own direction;
+            // in a stack the child's anchor follows the child's.
+            c.mirrored = parent.mirrored && s.mirror;
+            if (mode == LayoutMode::Stack ? c.mirrored : parent.mirrored) {
+                box.x = content.x + content.w - (box.x - content.x) - box.w;
+            }
             c.box = snap(box);
             stack.push_back(ch);
         });
@@ -309,7 +319,7 @@ Rect visualBox(const ElementStore& store, UiHandle h) {
     // (offset) centre of its own box.
     Rect r = e->box;
     for (const Element* cur = e; cur; cur = store.get(cur->parent)) {
-        const Vec2 off = cur->spec.offset;
+        const Vec2 off = visualOffset(*cur);
         const Vec2 c = cur->box.center() + off;
         const f32 s = cur->scale;
         r = {c.x + (r.x + off.x - c.x) * s, c.y + (r.y + off.y - c.y) * s, r.w * s, r.h * s};

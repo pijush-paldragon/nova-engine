@@ -220,7 +220,8 @@ std::optional<std::string> readTextFields(std::string_view) {
     return std::string(R"({ "type": "panel", "children": [
         { "type": "label", "id": "a", "text": "x", "wrap": true, "maxLines": 2, "overflow": "shrink",
           "minScale": 0.5, "lineSpacing": 1.2, "textAlign": "end" },
-        { "type": "label", "id": "b", "text": "y", "textAlign": "start", "maxLines": -1, "overflow": "squash" } ] })");
+        { "type": "label", "id": "b", "text": "y", "textAlign": "start", "maxLines": -1, "overflow": "squash" },
+        { "type": "image", "id": "c", "sprite": "s/a", "spriteRtl": "s/b", "mirror": false } ] })");
 }
 } // namespace
 
@@ -241,4 +242,8 @@ TEST_CASE("Text layout fields parse") {
     CHECK(b.overflow == Overflow::Clip);
     CHECK(hasError(r, R"(text.json: children[1] (label "b"): "maxLines" must be a whole number, 0 or more)"));
     CHECK(r.errors.size() == 2); // and the unknown overflow value
+    const UiSpec& c = node(nodes, "c").spec;
+    CHECK(c.spriteRtl == "s/b");
+    CHECK(!c.mirror);
+    CHECK(a.mirror);
 }
