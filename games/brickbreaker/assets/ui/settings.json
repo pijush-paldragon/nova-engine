@@ -1,0 +1,14 @@
+{
+  "type": "panel", "style": "panel", "width": 560, "layout": "column", "gap": 20, "align": "stretch",
+  "children": [
+    { "type": "label", "style": "heading", "text": "Settings", "textAlign": "center" },
+    { "type": "label", "style": "muted", "text": "Music" },
+    { "type": "slider", "id": "music", "width": "fill", "step": 0.05 },
+    { "type": "label", "style": "muted", "text": "Sound effects" },
+    { "type": "slider", "id": "sfx", "width": "fill", "step": 0.05 },
+    { "type": "panel", "layout": "row", "align": "center", "justify": "space-between", "children": [
+        { "type": "label", "style": "body", "text": "Sound" },
+        { "type": "toggle", "id": "sound" } ] },
+    { "type": "button", "id": "close", "style": "primary", "text": "Done" }
+  ]
+}

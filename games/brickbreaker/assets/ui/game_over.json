@@ -1,0 +1,12 @@
+{
+  "type": "panel", "width": 720, "height": 1280, "anchor": "center", "layout": "column", "align": "center",
+  "padding": [360, 0, 0, 0], "gap": 16, "enter": "fade",
+  "children": [
+    { "type": "label", "style": "title-pink", "text": "GAME OVER" },
+    { "type": "label", "id": "score", "style": "body", "text": "Score 0" },
+    { "type": "label", "id": "best", "style": "muted", "text": "Best 0" },
+    { "type": "panel", "height": 160 },
+    { "type": "button", "id": "again", "style": "primary", "text": "Play again", "width": 360 },
+    { "type": "button", "id": "menu", "style": "secondary", "text": "Menu", "width": 360 }
+  ]
+}

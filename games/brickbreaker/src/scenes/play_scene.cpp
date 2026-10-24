@@ -30,7 +30,6 @@ void PlayScene::onEnter() {
     Atlas atlas = assets().atlas("sprites");
     brickRegion_ = atlas.region("brick");
     loseSound_ = assets().sound("sfx/lose.wav");
-    FontHandle hud = assets().font("fonts/Fredoka.ttf", 40);
 
     const Rect safe = renderer().safeArea();
     const Rect visible = renderer().visibleRect();
@@ -68,15 +67,11 @@ void PlayScene::onEnter() {
         world().add<ParticleEmitter>(e, makeEmitter(burst, 48));
     }
 
-    scoreLabel_ = world().spawn();
-    world().add<Transform>(scoreLabel_, Transform{.pos{std::max(safe.x, 0.f) + 24, hudY}});
-    world().add<TextLabel>(scoreLabel_, TextLabel{.font = hud, .align = TextAlign::Left});
-    levelLabel_ = world().spawn();
-    world().add<Transform>(levelLabel_, Transform{.pos{360, hudY}});
-    world().add<TextLabel>(levelLabel_, TextLabel{.font = hud, .color = Color::fromHex(0xAAB4D4FF), .align = TextAlign::Center});
-    livesLabel_ = world().spawn();
-    world().add<Transform>(livesLabel_, Transform{.pos{std::min(safe.right(), kDesignWidth) - 24, hudY}});
-    world().add<TextLabel>(livesLabel_, TextLabel{.font = hud, .align = TextAlign::Right});
+    // HUD: score, level, lives and a pause button, kept clear of the notch (ui/hud.json).
+    ui().load("ui/hud.json");
+    ui().onClick("pause", [this] {
+        if (!paused_) scenes().push<PauseScene>();
+    });
 
     spawnLevel();
     updateHud();
@@ -144,11 +139,11 @@ void PlayScene::updateHud() {
     GameState& gs = gameState(world());
     char text[32];
     std::snprintf(text, sizeof text, "Score %d", gs.score);
-    world().get<TextLabel>(scoreLabel_).set(text);
+    ui().label("score").setText(text); // unchanged text costs nothing
     std::snprintf(text, sizeof text, "Level %d", gs.level);
-    world().get<TextLabel>(levelLabel_).set(text);
+    ui().label("level").setText(text);
     std::snprintf(text, sizeof text, "Lives %d", gs.lives);
-    world().get<TextLabel>(livesLabel_).set(text);
+    ui().label("lives").setText(text);
 }
 
 void PlayScene::onUpdate(float dt) {

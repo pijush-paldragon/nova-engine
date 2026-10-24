@@ -63,7 +63,10 @@ std::unique_ptr<UiShared> createUiShared(RendererBackend& renderer) {
         for (u8 radius : kShapeRadii) {
             const f32 r = f32(radius) * kSupersample;
             const f32 inset = outlined ? std::max(r, kOutlineTexels) : r;
-            cells.push_back({std::max(4, int(2 * inset) + 2), inset, r, outlined});
+            // A plain square is sampled only from its middle texels: stretched across a whole
+            // screen, linear filtering would otherwise blend its edge with the transparent gap.
+            const int size = r == 0 && !outlined ? 8 : std::max(4, int(2 * inset) + 2);
+            cells.push_back({size, inset, r, outlined});
         }
     }
     cells.push_back({96, 48, 48, false}); // circle (slider knob, switch knob)
@@ -92,6 +95,7 @@ std::unique_ptr<UiShared> createUiShared(RendererBackend& renderer) {
             }
         }
         ShapeRegion region{{f32(x0), 0, n, n}, c.inset, c.inset / kSupersample};
+        if (c.radius == 0 && !c.outlined) region.src = {f32(x0) + 2, 2, n - 4, n - 4};
         if (i < kShapeRadii.size()) shared->filled[i] = region;
         else if (i < 2 * kShapeRadii.size()) shared->outline[i - kShapeRadii.size()] = region;
         else shared->circle = region;

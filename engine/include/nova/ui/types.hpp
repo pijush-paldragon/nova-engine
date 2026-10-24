@@ -46,11 +46,12 @@ struct Insets {
 
 // Every property an element can have; each kind reads the fields that apply to it.
 struct UiSpec {
-    std::string id;
-    std::string style;
-    std::string text;
-    std::string sprite;
-    std::string icon;
+    // Every field has a default initializer, so designated initializers may skip any of them.
+    std::string id{};
+    std::string style{};
+    std::string text{};
+    std::string sprite{};
+    std::string icon{};
 
     Size width = Size::fit();
     Size height = Size::fit();
@@ -61,7 +62,7 @@ struct UiSpec {
 
     LayoutMode layout = LayoutMode::Stack;
     f32 gap = 0;
-    Insets padding;
+    Insets padding{};
     Justify justify = Justify::Start;
     Align align = Align::Start;
     bool safeArea = false;
@@ -73,7 +74,7 @@ struct UiSpec {
 
     TextAlignH textAlign = TextAlignH::Left;
     ImageFit imageFit = ImageFit::Stretch;
-    Insets slice;            // nine-slice insets in texels; all zero = stretch the whole sprite
+    Insets slice{};          // nine-slice insets in texels; all zero = stretch the whole sprite
     Color tint = Color::White;
 
     ToggleLook look = ToggleLook::Switch;

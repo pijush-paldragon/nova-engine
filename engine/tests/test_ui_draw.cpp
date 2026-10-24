@@ -166,3 +166,16 @@ TEST_CASE("Missing font draws nothing and logs once") {
     CHECK(fx.canvas.impl().drawList.layers[0].texts.empty());
     CHECK(logs.count("ui: style \"bare\" has no font") == 1);
 }
+
+TEST_CASE("First text change on an id'd label allocates nothing") {
+    UiFixture fx;
+    fx.shared->theme.set("default", withFont(fx.shared->theme.resolve("default", VisualState::Normal)));
+    fx.canvas.root().add<Label>({.id = "score", .text = "Score 0"});
+    for (int i = 0; i < 3; ++i) fx.frame();
+    memory::markGameThread();
+    const u64 before = memory::allocationCount();
+    fx.canvas.label("score").setText("Score 10"); // never changed before: no bookkeeping may allocate
+    fx.frame();
+    CHECK(memory::allocationCount() == before);
+}
+

@@ -172,6 +172,9 @@ TEST_CASE("Layout runs only when dirty") {
     CHECK(layout(c) == 0);
     label.setText("changed");
     CHECK(layout(c) > 0);
+    label.setText("changed"); // same text again: nothing to do
+    label.setVisible(true);   // unchanged too
+    CHECK(layout(c) == 0);
     label.setVisible(false);
     CHECK(layout(c) > 0);
     CHECK(layout(c) == 0);

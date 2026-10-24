@@ -5,6 +5,7 @@
 
 #include <audio/audio_backend.hpp>
 #include <input/input_internal.hpp>
+#include <nova/core/alloc_stats.hpp>
 #include <scene/services.hpp>
 
 #include <algorithm>
@@ -31,6 +32,21 @@ f32 sliderValueAt(const Element& e, const Rect& box, f32 x) {
     f32 v = s.min + t * (s.max - s.min);
     if (s.step > 0) v = s.min + std::round((v - s.min) / s.step) * s.step;
     return std::clamp(v, std::min(s.min, s.max), std::max(s.min, s.max));
+}
+
+// Player-changed toggle/slider values survive a live reload (dev builds only, not counted as
+// gameplay allocations).
+void rememberPlayerValue(Canvas::Impl& impl, const Element& e) {
+#if defined(NOVA_DEV_TOOLS)
+    memory::LoadingScope tooling;
+    if (Remembered* r = impl.rememberFor(e)) {
+        if (e.kind == Kind::Toggle) r->on = e.spec.on;
+        else r->value = e.spec.value;
+    }
+#else
+    (void)impl;
+    (void)e;
+#endif
 }
 
 Touch* freeTouch(Canvas::Impl& impl) {
@@ -169,7 +185,7 @@ void uiInput(Canvas& canvas, InputBackend& input) {
             const f32 v = sliderValueAt(*e, visualBox(impl.store, t->owner), p.pos.x);
             if (v != e->spec.value) {
                 e->spec.value = v;
-                if (Remembered* r = impl.rememberFor(*e)) r->value = v;
+                rememberPlayerValue(impl, *e);
                 impl.events.push_back({UiEvent::Type::Change, t->owner, v});
             }
         } else if (!t->cancelled && !grown(visualBox(impl.store, t->owner), kCancelDistance).contains(p.pos)) {
@@ -182,7 +198,7 @@ void uiInput(Canvas& canvas, InputBackend& input) {
                     impl.events.push_back({UiEvent::Type::Click, t->owner});
                 } else if (e->kind == Kind::Toggle) {
                     e->spec.on = !e->spec.on;
-                    if (Remembered* r = impl.rememberFor(*e)) r->on = e->spec.on;
+                    rememberPlayerValue(impl, *e);
                     impl.events.push_back({UiEvent::Type::Click, t->owner});
                     impl.events.push_back({UiEvent::Type::Toggle, t->owner, e->spec.on ? 1.f : 0.f});
                 } else if (e->kind == Kind::Slider) {

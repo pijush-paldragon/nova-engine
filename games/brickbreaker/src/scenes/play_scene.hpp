@@ -19,9 +19,6 @@ private:
     void updateHud();
 
     nova::Entity state_ = nova::kNullEntity;
-    nova::Entity scoreLabel_ = nova::kNullEntity;
-    nova::Entity livesLabel_ = nova::kNullEntity;
-    nova::Entity levelLabel_ = nova::kNullEntity;
     nova::SpriteRegion brickRegion_;
     nova::SoundHandle loseSound_;
     float bricksTop_ = 220;

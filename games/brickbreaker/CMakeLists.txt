@@ -25,6 +25,7 @@ nova_add_game(brickbreaker
         src/scenes/play_scene.cpp
         src/scenes/pause_scene.cpp
         src/scenes/game_over_scene.cpp
+        src/settings.cpp
     ASSETS assets
     BUNDLE_ID com.gamestudio.brickbreaker
     DISPLAY_NAME "Brick Breaker"

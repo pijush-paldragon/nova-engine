@@ -27,3 +27,4 @@
 #include <nova/scene/scene_stack.hpp>
 #include <nova/scene/timers.hpp>
 #include <nova/text/text.hpp>
+#include <nova/ui/ui.hpp>

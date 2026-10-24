@@ -1,29 +1,27 @@
 #include "scenes/pause_scene.hpp"
 
+#include "scenes/menu_scene.hpp"
+#include "settings.hpp"
+
 using namespace nova;
 
 void PauseScene::onEnter() {
-    Rect visible = renderer().visibleRect();
-    Entity shade = world().spawn();
-    world().add<Transform>(shade, Transform{.pos = visible.center()});
-    world().add<Sprite>(shade, Sprite{.region = assets().atlas("sprites").region("pixel"),
-                                      .size{visible.w, visible.h}, .color = Color::fromHex(0x000000B0)});
+    // The popup's backdrop dims the frozen game below; closing it (Resume, back, P) resumes.
+    menu_ = ui().push("ui/pause.json", {.dim = 0.7f, .enter = ui::Transition::Pop});
+    menu_.onClose([this] {
+        if (!quitting_) scenes().pop();
+    });
+    ui().onClick("resume", [this] { menu_.close(); });
+    ui().onClick("settings", [this] { openSettings(ui(), audio(), save()); });
+    ui().onClick("quit", [this] {
+        quitting_ = true;
+        scenes().pop();                   // this pause scene...
+        scenes().replace<MenuScene>();    // ...then the game below it
+    });
 
-    FontHandle big = assets().font("fonts/Fredoka.ttf", 84);
-    FontHandle small = assets().font("fonts/Fredoka.ttf", 40);
-    Entity title = world().spawn();
-    world().add<Transform>(title, Transform{.pos{360, 560}});
-    world().add<TextLabel>(title, TextLabel{.font = big, .align = TextAlign::Center}).set("PAUSED");
-    Entity hint = world().spawn();
-    world().add<Transform>(hint, Transform{.pos{360, 680}});
-    world().add<TextLabel>(hint, TextLabel{.font = small, .color = Color::fromHex(0xAAB4D4FF), .align = TextAlign::Center})
-        .set("Tap to resume");
-
-    if (options().autoplay) timers().after(0.5f, [this] { scenes().pop(); });
+    if (options().autoplay) timers().after(0.5f, [this] { menu_.close(); });
 }
 
 void PauseScene::onUpdate(float) {
-    if (input().tapped() || input().backPressed() || input().keyPressed(Key::P) || input().keyPressed(Key::Space)) {
-        scenes().pop();
-    }
+    if (ui().popupCount() == 1 && (input().keyPressed(Key::P) || input().keyPressed(Key::Space))) menu_.close();
 }

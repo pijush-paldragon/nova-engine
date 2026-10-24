@@ -86,7 +86,19 @@ Element* resolveForLayout(Canvas* canvas, UiHandle h) {
     return e;
 }
 
-Remembered* memo(Canvas* canvas, const Element& e) { return canvas->impl().rememberFor(e); }
+// Dev builds remember values for live reload; that bookkeeping is tooling, so its allocations
+// never count against --fail-on-alloc. Release builds keep nothing.
+template <class F>
+void remember(Canvas* canvas, const Element& e, F&& fn) {
+#if defined(NOVA_DEV_TOOLS)
+    memory::LoadingScope tooling;
+    if (Remembered* r = canvas->impl().rememberFor(e)) fn(*r);
+#else
+    (void)canvas;
+    (void)e;
+    (void)fn;
+#endif
+}
 
 // Assigns into an engaged optional string in place, so repeated same-length sets don't allocate.
 void keep(std::optional<std::string>& slot, std::string_view v) {
@@ -109,22 +121,23 @@ Rect ElementRef::box() const {
 }
 
 void ElementRef::setVisible(bool visible) {
-    if (Element* e = resolveForLayout(canvas_, h_)) {
+    if (Element* e = resolve(canvas_, h_)) {
+        if (e->spec.visible != visible) canvas_->impl().store.markDirty(e->layer);
         e->spec.visible = visible;
-        if (Remembered* r = memo(canvas_, *e)) r->visible = visible;
+        remember(canvas_, *e, [&](Remembered& r) { r.visible = visible; });
     }
 }
 void ElementRef::setEnabled(bool enabled) {
     if (Element* e = resolve(canvas_, h_)) {
         e->spec.enabled = enabled;
-        if (Remembered* r = memo(canvas_, *e)) r->enabled = enabled;
+        remember(canvas_, *e, [&](Remembered& r) { r.enabled = enabled; });
     }
 }
 void ElementRef::setStyle(std::string_view style) {
     if (Element* e = resolveForLayout(canvas_, h_)) {
         e->spec.style.assign(style.data(), style.size());
         e->resolveDirty = true;
-        if (Remembered* r = memo(canvas_, *e)) keep(r->style, style);
+        remember(canvas_, *e, [&](Remembered& r) { keep(r.style, style); });
     }
 }
 void ElementRef::setOpacity(f32 opacity) {
@@ -149,25 +162,27 @@ void ImageRef::setSprite(std::string_view sprite) {
     if (Element* e = resolveForLayout(canvas_, h_)) {
         e->spec.sprite.assign(sprite.data(), sprite.size());
         e->resolveDirty = true;
-        if (Remembered* r = memo(canvas_, *e)) keep(r->sprite, sprite);
+        remember(canvas_, *e, [&](Remembered& r) { keep(r.sprite, sprite); });
     }
 }
 void LabelRef::setText(std::string_view text) {
-    if (Element* e = resolveForLayout(canvas_, h_)) {
-        e->spec.text.assign(text.data(), text.size());
-        if (Remembered* r = memo(canvas_, *e)) keep(r->text, text);
-    }
+    Element* e = resolve(canvas_, h_);
+    if (!e || e->spec.text == text) return; // unchanged: no relayout
+    canvas_->impl().store.markDirty(e->layer);
+    e->spec.text.assign(text.data(), text.size());
+    remember(canvas_, *e, [&](Remembered& r) { keep(r.text, text); });
 }
 void ButtonRef::setText(std::string_view text) {
-    if (Element* e = resolveForLayout(canvas_, h_)) {
-        e->spec.text.assign(text.data(), text.size());
-        if (Remembered* r = memo(canvas_, *e)) keep(r->text, text);
-    }
+    Element* e = resolve(canvas_, h_);
+    if (!e || e->spec.text == text) return; // unchanged: no relayout
+    canvas_->impl().store.markDirty(e->layer);
+    e->spec.text.assign(text.data(), text.size());
+    remember(canvas_, *e, [&](Remembered& r) { keep(r.text, text); });
 }
 void ToggleRef::setOn(bool on) {
     if (Element* e = resolve(canvas_, h_)) {
         e->spec.on = on;
-        if (Remembered* r = memo(canvas_, *e)) r->on = on;
+        remember(canvas_, *e, [&](Remembered& r) { r.on = on; });
     }
 }
 bool ToggleRef::on() const {
@@ -177,7 +192,7 @@ bool ToggleRef::on() const {
 void SliderRef::setValue(f32 value) {
     if (Element* e = resolve(canvas_, h_)) {
         e->spec.value = std::clamp(value, std::min(e->spec.min, e->spec.max), std::max(e->spec.min, e->spec.max));
-        if (Remembered* r = memo(canvas_, *e)) r->value = e->spec.value;
+        remember(canvas_, *e, [&](Remembered& r) { r.value = e->spec.value; });
     }
 }
 f32 SliderRef::value() const {
@@ -197,7 +212,7 @@ void ProgressRef::setValue(f32 value) {
         e->shown = value;
         e->shownT = 1;
     }
-    if (Remembered* r = memo(canvas_, *e)) r->value = value;
+    remember(canvas_, *e, [&](Remembered& r) { r.value = value; });
 }
 f32 ProgressRef::value() const {
     const Element* e = resolve(canvas_, h_);
@@ -409,10 +424,15 @@ SliderRef PopupRef::slider(std::string_view id) { return SliderRef(canvas_, find
 ProgressRef PopupRef::progress(std::string_view id) { return ProgressRef(canvas_, find(id, int(Kind::ProgressBar))); }
 
 Remembered* Canvas::Impl::rememberFor(const Element& e) {
+#if !defined(NOVA_DEV_TOOLS)
+    (void)e;
+    return nullptr; // only live reload reads remembered values
+#else
     if (e.spec.id.empty()) return nullptr;
     auto it = remembered.find(std::string_view(e.spec.id));
     if (it == remembered.end()) it = remembered.emplace(e.spec.id, Remembered{}).first;
     return &it->second;
+#endif
 }
 
 std::string_view Canvas::rememberedTextForTests(std::string_view id) const {

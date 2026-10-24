@@ -1,0 +1,27 @@
+{
+  // Brick Breaker's UI styles. Every style without "extends" builds on "default".
+  "styles": {
+    "default": { "font": "fonts/Fredoka.ttf", "fontSize": 40, "textColor": "#ffffff",
+                 "states": { "pressed": { "tint": "#d9d9d9", "scale": 0.95 }, "disabled": { "opacity": 0.5 } } },
+    "title": { "fontSize": 84 },
+    "title-gold": { "extends": "title", "textColor": "#ffd166" },
+    "title-pink": { "extends": "title", "textColor": "#f72585" },
+    "heading": { "fontSize": 56 },
+    "body": { "fontSize": 40 },
+    "muted": { "fontSize": 44, "textColor": "#aab4d4" },
+    "hud": { "fontSize": 40 },
+    "hud-muted": { "extends": "hud", "textColor": "#aab4d4" },
+    "highlight": { "fontSize": 48, "textColor": "#ffd166" },
+    "primary": { "background": { "shape": "rounded", "radius": 24, "color": "#ffd166" }, "textColor": "#1b1f3b",
+                 "fontSize": 44, "padding": [18, 32, 18, 32], "clickSound": "sfx/hit.wav" },
+    "secondary": { "background": { "shape": "rounded", "radius": 24, "color": "#00000000" },
+                   "outline": { "color": "#aab4d4" }, "textColor": "#e8eaf6", "fontSize": 44,
+                   "padding": [18, 32, 18, 32], "clickSound": "sfx/hit.wav" },
+    "icon": { "background": { "shape": "rounded", "radius": 24, "color": "#2a3152" }, "fontSize": 40,
+              "clickSound": "sfx/hit.wav" },
+    "panel": { "background": { "shape": "rounded", "radius": 32, "color": "#1b1f3bf2" }, "padding": 32 },
+    "slider": { "background": { "shape": "rounded", "radius": 8, "color": "#2a3152" }, "tint": "#ffd166" },
+    "toggle": { "background": { "shape": "rounded", "radius": 16, "color": "#2a3152" },
+                "states": { "checked": { "background": { "shape": "rounded", "radius": 16, "color": "#4cc9f0" } } } }
+  }
+}

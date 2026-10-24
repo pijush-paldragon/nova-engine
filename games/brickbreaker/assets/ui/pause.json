@@ -1,0 +1,9 @@
+{
+  "type": "panel", "style": "panel", "width": 480, "layout": "column", "gap": 24, "align": "stretch",
+  "children": [
+    { "type": "label", "style": "heading", "text": "Paused", "textAlign": "center" },
+    { "type": "button", "id": "resume", "style": "primary", "text": "Resume" },
+    { "type": "button", "id": "settings", "style": "secondary", "text": "Settings" },
+    { "type": "button", "id": "quit", "style": "secondary", "text": "Quit to menu" }
+  ]
+}
