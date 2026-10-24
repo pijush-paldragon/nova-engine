@@ -215,6 +215,11 @@ void App::render(Scene& top) {
         text_->collectAndDraw(scene.world_, renderer_->fit(), origin); // text above the scene's sprites
         ui::uiDraw(scene.ui_, *renderer_, uiBatch_);                  // the scene's UI above its world
     });
+#if defined(NOVA_DEV_TOOLS)
+    if (std::string_view error = top.ui_.devError(); !error.empty()) {
+        drawErrorBanner(renderer_->sdl(), error, renderer_->pixelScale());
+    }
+#endif
     if (overlay_) {
         FrameStats stats{fps_.fps(),
                          fps_.avgMs(),

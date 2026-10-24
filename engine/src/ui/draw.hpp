@@ -7,6 +7,7 @@
 #include <nova/render/sprite_batch.hpp>
 
 #include <array>
+#include <string>
 #include <memory>
 #include <vector>
 
@@ -33,6 +34,8 @@ struct UiShared {
     TextureHandle shapes;
     std::array<ShapeRegion, kShapeRadii.size()> filled{}, outline{};
     ShapeRegion circle;
+    std::vector<std::string> themeFiles; // live reload of ui/theme.json (dev builds)
+    std::vector<i64> themeStamps;
 
     UiShared() = default;
     UiShared(const UiShared&) = delete;

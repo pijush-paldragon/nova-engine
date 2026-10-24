@@ -83,6 +83,9 @@ struct Canvas::Impl {
     std::vector<std::string> layerSources{"code"}; // what built each layer, for messages
     std::vector<std::vector<std::string>> layerFiles{{}}; // files each layer was loaded from (reload)
     FileReader reader;                              // where load() reads files (assets by default)
+    std::vector<std::vector<i64>> layerStamps;      // modification times of layerFiles (live reload)
+    f32 reloadTimer = 0;
+    std::string devError;                           // live reload: the edit that failed, until fixed
     std::unordered_set<std::string> reported;      // "kind:id" already logged as missing
 
     std::unordered_map<std::string, BindingPtr, IdHash, std::equal_to<>> idBindings;

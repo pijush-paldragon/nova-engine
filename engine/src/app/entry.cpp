@@ -16,6 +16,7 @@
 
 namespace nova::detail {
 void setPackRequired(bool required);
+void setDevAssetSourceDir(const char* dir);
 SDL_AppResult appInit(int argc, char** argv);
 SDL_AppResult appIterate();
 SDL_AppResult appEvent(const SDL_Event& event);
@@ -25,6 +26,9 @@ void appQuit();
 SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
     (void)appstate;
     nova::detail::setPackRequired(NOVA_REQUIRE_PACK_VALUE); // pack builds: a missing game.pak is tampering
+#if defined(NOVA_DEV_ASSET_SOURCE_DIR)
+    nova::detail::setDevAssetSourceDir(NOVA_DEV_ASSET_SOURCE_DIR); // live reload of UI layout files
+#endif
     return nova::detail::appInit(argc, argv);
 }
 

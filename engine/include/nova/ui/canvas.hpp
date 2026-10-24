@@ -40,6 +40,9 @@ public:
     // Elements alive in this canvas, root included (removed ones count until the frame ends).
     u32 elementCount() const;
 
+    // Dev builds with live reload: the first error of the last failed edit (empty when fine).
+    std::string_view devError() const;
+
     // Test hook: the text last set through a reference for this id.
     std::string_view rememberedTextForTests(std::string_view id) const;
 

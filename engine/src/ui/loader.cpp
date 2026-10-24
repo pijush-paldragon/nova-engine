@@ -2,6 +2,7 @@
 
 #include "ui/canvas_impl.hpp"
 #include "ui/draw.hpp"
+#include "ui/reload.hpp"
 
 #include <nova/core/alloc_stats.hpp>
 #include <nova/core/log.hpp>
@@ -545,6 +546,7 @@ LoadResult loadTheme(std::string_view path, const FileReader& read, Theme& theme
 void loadGameTheme(UiShared& shared, const FileReader& read) {
     if (!read("ui/theme.json")) return; // optional
     LoadResult r = loadTheme("ui/theme.json", read, shared.theme);
+    recordThemeStamps(shared, r.files);
     logAll(r);
 }
 

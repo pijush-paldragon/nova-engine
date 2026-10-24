@@ -1,6 +1,7 @@
 #include "ui/animation.hpp"
 #include "ui/canvas_impl.hpp"
 #include "ui/layout.hpp"
+#include "ui/reload.hpp"
 #include "ui/ui_backend.hpp"
 
 #include <nova/core/log.hpp>
@@ -220,7 +221,10 @@ void uiReset(Canvas& canvas) {
 
 void uiFlush(Canvas& canvas) { canvas.impl().store.flush(); }
 
+std::string_view Canvas::devError() const { return impl_->devError; }
+
 void uiUpdate(Canvas& canvas, f32 dt) {
+    pollReload(canvas.impl(), dt);
     updateAnimations(canvas.impl(), dt);
     refreshLayout(canvas.impl());
 }
@@ -243,6 +247,7 @@ void Canvas::Impl::buildLayer(u16 layer, const std::vector<NodeSpec>& nodes, std
     if (layerFiles.size() <= layer) layerFiles.resize(layer + 1u);
     layerSources[layer] = std::move(source);
     layerFiles[layer] = result.files;
+    recordLayerStamps(*this, layer);
 }
 
 Remembered* Canvas::Impl::rememberFor(const Element& e) {

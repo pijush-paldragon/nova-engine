@@ -81,6 +81,11 @@ function(nova_add_game name)
     nova_apply_hardening(${target})
     # Pack builds treat a missing game.pak as tampering (see entry.cpp).
     target_compile_definitions(${target} PRIVATE "$<${NOVA_PACK_MODE}:NOVA_REQUIRE_PACK=1>")
+    # Desktop dev builds live-reload UI layout files from the game's source assets folder.
+    if(NOT NOVA_MOBILE)
+        target_compile_definitions(${target} PRIVATE
+            "$<$<NOT:${NOVA_IS_RELEASE}>:NOVA_DEV_ASSET_SOURCE_DIR=\"${assets_dir}/\">")
+    endif()
 
     if(ANDROID AND NOVA_ANDROID_PACK_DIR)
         # Release APKs: Gradle takes its assets from this folder (see nova-app.gradle).

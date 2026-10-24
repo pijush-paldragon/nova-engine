@@ -3,6 +3,7 @@
 #include <nova/core/types.hpp>
 
 #include <array>
+#include <string_view>
 
 struct SDL_Renderer;
 
@@ -34,5 +35,8 @@ struct FrameStats {
 
 // Draws the stats in the top-left corner with SDL's built-in debug font.
 void drawDebugOverlay(SDL_Renderer* renderer, const FrameStats& stats, f32 pixelScale);
+
+// A red bar across the top of the window with a message (live-reload errors). No font needed.
+void drawErrorBanner(SDL_Renderer* renderer, std::string_view message, f32 pixelScale);
 
 } // namespace nova

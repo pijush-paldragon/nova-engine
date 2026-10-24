@@ -43,4 +43,26 @@ void drawDebugOverlay(SDL_Renderer* renderer, const FrameStats& s, f32 pixelScal
     SDL_SetRenderScale(renderer, 1, 1);
 }
 
+void drawErrorBanner(SDL_Renderer* renderer, std::string_view message, f32 pixelScale) {
+    memory::DriverAllocScope driver;
+    int w = 0, h = 0;
+    SDL_GetCurrentRenderOutputSize(renderer, &w, &h);
+    const f32 scale = std::max(1.f, std::round(pixelScale * 2)); // the debug font is 8 px
+    const f32 barH = 36 * pixelScale;
+    SDL_FRect bar{0, 0, f32(w), barH};
+    SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
+    SDL_SetRenderDrawColor(renderer, 200, 30, 30, 235);
+    SDL_RenderFillRect(renderer, &bar);
+    SDL_SetRenderScale(renderer, scale, scale);
+    SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+    const size_t fit = size_t(std::max(1.f, (f32(w) / scale - 8) / 8)); // characters per line
+    std::string_view line = message.substr(0, std::min(message.size(), fit));
+    char buf[512];
+    const size_t n = std::min(line.size(), sizeof buf - 1);
+    std::copy_n(line.data(), n, buf);
+    buf[n] = '\0';
+    SDL_RenderDebugText(renderer, 4, (barH / scale - 8) * 0.5f, buf);
+    SDL_SetRenderScale(renderer, 1, 1);
+}
+
 } // namespace nova
