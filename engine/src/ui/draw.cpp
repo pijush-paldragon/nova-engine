@@ -171,6 +171,10 @@ Vec2 measureElement(const Element& e, void* ctx) {
             if (icon.x > 0 && text.x > 0) return {icon.x + kIconGap + text.x, std::max(icon.y, text.y)};
             return icon.x > 0 ? icon : text;
         }
+        // Natural sizes of the built-in widget looks.
+        case Kind::Toggle: return e.spec.look == ToggleLook::Switch ? Vec2{96, 56} : Vec2{56, 56};
+        case Kind::Slider: return {400, 48};
+        case Kind::ProgressBar: return {300, 24};
         default: return {};
     }
 }
@@ -282,6 +286,51 @@ void emitImage(Emitter& em, const Canvas::Impl& impl, const Element& e, Rect box
     em.quad(e.region.texture, src, dst, color, xf);
 }
 
+// Built-in looks for toggles, sliders and progress bars, from the style's background (track)
+// and tint (fill, knob accent).
+void emitWidget(Emitter& em, const UiShared& shared, const Element& e, const Style& style, f32 opacity, const Xf& xf) {
+    const Rect b = e.box;
+    const Background& bg = style.background;
+    auto shape = [&](Rect r, u8 radius, Color color) {
+        const ShapeRegion& s = shared.shape(radius, false);
+        em.nineSlice(shared.shapes, s.src, Insets::all(s.insetTexels), Insets::all(s.insetDesign), r,
+                     modulate(color, Color::White, opacity), xf);
+    };
+    auto knob = [&](Vec2 centre, f32 d, Color color) {
+        em.quad(shared.shapes, shared.circle.src, {centre.x - d * 0.5f, centre.y - d * 0.5f, d, d},
+                modulate(color, Color::White, opacity), xf);
+    };
+    if (e.kind == Kind::Toggle) {
+        if (e.spec.look == ToggleLook::Switch) {
+            shape(b, 32, bg.color);
+            const f32 d = b.h - 8;
+            const f32 x = e.spec.on ? b.x + b.w - 4 - d * 0.5f : b.x + 4 + d * 0.5f;
+            knob({x, b.y + b.h * 0.5f}, d, Color::White);
+        } else {
+            shape(b, 8, bg.color);
+            if (e.spec.on) shape({b.x + b.w * 0.25f, b.y + b.h * 0.25f, b.w * 0.5f, b.h * 0.5f}, 8, Color::White);
+        }
+    } else if (e.kind == Kind::Slider) {
+        const f32 range = e.spec.max - e.spec.min;
+        const f32 t = range != 0 ? std::clamp((e.spec.value - e.spec.min) / range, 0.f, 1.f) : 0;
+        const f32 trackH = 12, cy = b.y + b.h * 0.5f;
+        shape({b.x, cy - trackH * 0.5f, b.w, trackH}, 8, bg.color);
+        shape({b.x, cy - trackH * 0.5f, b.w * t, trackH}, 8, style.tint);
+        knob({b.x + b.w * t, cy}, std::min(40.f, b.h), Color::White);
+    } else {
+        const f32 v = std::clamp(e.shown, 0.f, 1.f);
+        shape(b, 8, bg.color);
+        Rect fill = b;
+        switch (e.spec.direction) {
+            case FillDirection::Right: fill.w = b.w * v; break;
+            case FillDirection::Left: fill = {b.x + b.w * (1 - v), b.y, b.w * v, b.h}; break;
+            case FillDirection::Up: fill = {b.x, b.y + b.h * (1 - v), b.w, b.h * v}; break;
+            case FillDirection::Down: fill.h = b.h * v; break;
+        }
+        shape(fill, 8, style.tint);
+    }
+}
+
 Rect contentBox(const Element& e) {
     const Insets& p = e.padding;
     return {e.box.x + p.left, e.box.y + p.top, std::max(0.f, e.box.w - p.left - p.right),
@@ -305,19 +354,29 @@ void buildLayer(Canvas::Impl& impl, u16 layer, DrawLayer& out, std::vector<Frame
         stack.pop_back();
         Element& e = *store.get(f.h);
         if (e.removed || !e.spec.visible) continue;
-        const VisualState state = !e.spec.enabled ? VisualState::Disabled
-                                : e.pressed       ? VisualState::Pressed
-                                                  : VisualState::Normal;
+        const VisualState state = !e.spec.enabled                        ? VisualState::Disabled
+                                : e.pressed                               ? VisualState::Pressed
+                                : e.kind == Kind::Toggle && e.spec.on    ? VisualState::Checked
+                                                                          : VisualState::Normal;
         const Style& style = shared.theme.resolve(styleNameOf(e), state);
+        const f32 restScale = state == VisualState::Pressed
+                                  ? shared.theme.resolve(styleNameOf(e), VisualState::Normal).scale
+                                  : style.scale;
+        const f32 pressScale = shared.theme.resolve(styleNameOf(e), VisualState::Pressed).scale;
 
         // This element's local transform (offset, then scale about its centre), under its parent's.
-        const f32 s = e.scale * style.scale;
+        // The pressed scale eases in over 0.08 s (pressAmount).
+        const f32 s = e.scale * (restScale + (pressScale - restScale) * e.pressAmount);
         const Vec2 c = e.box.center() + e.spec.offset;
         const Vec2 localT = c + (e.spec.offset - c) * s;
         const Xf xf{f.xf.s * s, localT * f.xf.s + f.xf.t};
         const f32 opacity = f.opacity * e.spec.opacity * style.opacity;
 
-        emitBackground(em, shared, impl, style.background, e.box, style.tint, opacity, xf);
+        if (e.kind == Kind::Toggle || e.kind == Kind::Slider || e.kind == Kind::ProgressBar) {
+            emitWidget(em, shared, e, style, opacity, xf);
+        } else {
+            emitBackground(em, shared, impl, style.background, e.box, style.tint, opacity, xf);
+        }
         if (style.outlineColor) {
             const ShapeRegion& o = shared.shape(style.background.radius, true);
             em.nineSlice(shared.shapes, o.src, Insets::all(o.insetTexels), Insets::all(o.insetDesign), e.box,

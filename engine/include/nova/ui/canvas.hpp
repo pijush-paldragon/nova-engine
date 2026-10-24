@@ -36,6 +36,9 @@ public:
     // Elements alive in this canvas, root included (removed ones count until the frame ends).
     u32 elementCount() const;
 
+    // Test hook: the text last set through a reference for this id.
+    std::string_view rememberedTextForTests(std::string_view id) const;
+
     // Engine use only.
     struct Impl;
     Impl& impl() { return *impl_; }

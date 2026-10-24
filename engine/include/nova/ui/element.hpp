@@ -3,6 +3,7 @@
 // Typed references to UI elements. A reference is a canvas pointer plus a generational handle:
 // cheap to copy, and safe after the element is gone (every call becomes a no-op).
 
+#include <nova/ecs/tween.hpp>
 #include <nova/ui/types.hpp>
 
 #include <functional>
@@ -18,6 +19,30 @@ class ButtonRef;
 class ToggleRef;
 class SliderRef;
 class ProgressRef;
+
+class ElementRef;
+
+// Builds animations on one element: each of scale/fade/move starts a track (replacing a running
+// track of the same kind); ease/delay/yoyo/loop/onDone apply to the track started last.
+//   button.animate().scale(1.1f, 0.15f).ease(Ease::OutBack).yoyo();
+class Animator {
+public:
+    Animator(Canvas* canvas, UiHandle h) : canvas_(canvas), h_(h) {}
+    Animator& scale(f32 to, f32 seconds);
+    Animator& fade(f32 to, f32 seconds);
+    Animator& move(Vec2 offset, f32 seconds);
+    Animator& ease(Ease e);
+    Animator& delay(f32 seconds);
+    Animator& yoyo();
+    Animator& loop();
+    Animator& onDone(std::function<void()> fn);
+
+private:
+    Animator& start(u8 property, Vec2 to, f32 seconds);
+    Canvas* canvas_;
+    UiHandle h_;
+    i32 slot_ = -1;
+};
 
 class ElementRef {
 public:
@@ -45,6 +70,9 @@ public:
 
     // Removes this element and its children (they stop drawing and taking touches at once).
     void remove();
+
+    // Animates scale, opacity or offset (visual only: layout never re-runs).
+    Animator animate() { return Animator(canvas_, h_); }
 
 protected:
     UiHandle addChild(Kind kind, const UiSpec& spec);
@@ -83,6 +111,8 @@ public:
     using ElementRef::ElementRef;
     void setOn(bool on);
     bool on() const;
+    // Called with the new value when the player flips it (not when code calls setOn).
+    void onChange(std::function<void(bool)> fn);
 };
 
 class SliderRef : public ElementRef {
@@ -90,12 +120,20 @@ public:
     using ElementRef::ElementRef;
     void setValue(f32 value);
     f32 value() const;
+    // While dragging, each time the (stepped) value changes.
+    void onChange(std::function<void(f32)> fn);
+    // Once, when the finger lifts: a good moment to save.
+    void onCommit(std::function<void(f32)> fn);
 };
 
 class ProgressRef : public ElementRef {
 public:
     using ElementRef::ElementRef;
+    // Clamped to [0, 1]; with `animate` > 0 the bar eases toward it.
     void setValue(f32 value);
+    f32 value() const;
+    // The value currently drawn (mid-animation it trails value()).
+    f32 displayedValue() const;
 };
 
 // Widget tags for ElementRef::add<W>() and the typed lookups.

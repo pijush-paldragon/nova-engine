@@ -28,6 +28,7 @@ UiHandle ElementStore::add(UiHandle parent, Kind kind, const UiSpec& spec) {
     e.kind = kind;
     e.spec = spec;
     e.padding = spec.padding;
+    e.shown = spec.value; // progress bars start at their value
     e.parent = parent;
     e.layer = layer;
     UiHandle h = pool_.insert(std::move(e)); // may move storage: re-fetch pointers below

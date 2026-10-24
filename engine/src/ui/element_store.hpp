@@ -36,8 +36,11 @@ struct Element {
     Insets padding;       // effective padding: the spec's, else the style's
 
     // Visual state and caches resolved from the style (draw.cpp).
-    f32 scale = 1;        // animated scale (Task 5) times nothing else; style scale applies at draw
+    f32 scale = 1;        // animated scale; the style's scale applies on top at draw
     bool pressed = false;
+    f32 pressAmount = 0;      // eases toward pressed (0..1) over 0.08 s
+    f32 shown = 0;            // ProgressBar: displayed value
+    f32 shownFrom = 0, shownT = 1; // ProgressBar animation start value and progress
     bool resolveDirty = true; // style, font or sprite must be looked up again
     u32 themeGen = 0;
     FontHandle font;

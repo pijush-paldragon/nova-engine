@@ -8,6 +8,7 @@
 #include <scene/services.hpp>
 
 #include <algorithm>
+#include <cmath>
 
 namespace nova::ui {
 namespace {
@@ -21,6 +22,15 @@ Touch* findTouch(Canvas::Impl& impl, u64 pointer) {
         if (t.active && t.pointer == pointer) return &t;
     }
     return nullptr;
+}
+
+// Slider value under the finger: the box's horizontal extent maps to [min, max], snapped to step.
+f32 sliderValueAt(const Element& e, const Rect& box, f32 x) {
+    const UiSpec& s = e.spec;
+    const f32 t = box.w > 0 ? std::clamp((x - box.x) / box.w, 0.f, 1.f) : 0;
+    f32 v = s.min + t * (s.max - s.min);
+    if (s.step > 0) v = s.min + std::round((v - s.min) / s.step) * s.step;
+    return std::clamp(v, std::min(s.min, s.max), std::max(s.min, s.max));
 }
 
 Touch* freeTouch(Canvas::Impl& impl) {
@@ -108,6 +118,15 @@ void Canvas::onClick(std::string_view id, std::function<void()> fn) {
 void ButtonRef::onClick(std::function<void()> fn) {
     if (canvas_) canvas_->impl().bind(h_, [&](Binding& b) { b.click = std::move(fn); });
 }
+void ToggleRef::onChange(std::function<void(bool)> fn) {
+    if (canvas_) canvas_->impl().bind(h_, [&](Binding& b) { b.toggle = std::move(fn); });
+}
+void SliderRef::onChange(std::function<void(f32)> fn) {
+    if (canvas_) canvas_->impl().bind(h_, [&](Binding& b) { b.change = std::move(fn); });
+}
+void SliderRef::onCommit(std::function<void(f32)> fn) {
+    if (canvas_) canvas_->impl().bind(h_, [&](Binding& b) { b.commit = std::move(fn); });
+}
 
 // ---- Engine hooks ------------------------------------------------------------------------
 
@@ -135,10 +154,31 @@ void uiInput(Canvas& canvas, InputBackend& input) {
         if (!t) continue;
         Element* e = impl.store.live(t->owner);
         if (!e || !e->spec.enabled || !e->spec.visible) t->cancelled = true;
-        else if (!t->cancelled && !grown(visualBox(impl.store, t->owner), kCancelDistance).contains(p.pos)) t->cancelled = true;
+        else if (e->kind == Kind::Slider) {
+            // Sliders follow the finger anywhere until it lifts.
+            const f32 v = sliderValueAt(*e, visualBox(impl.store, t->owner), p.pos.x);
+            if (v != e->spec.value) {
+                e->spec.value = v;
+                if (Remembered* r = impl.rememberFor(*e)) r->value = v;
+                impl.events.push_back({UiEvent::Type::Change, t->owner, v});
+            }
+        } else if (!t->cancelled && !grown(visualBox(impl.store, t->owner), kCancelDistance).contains(p.pos)) {
+            t->cancelled = true;
+        }
         if (e) e->pressed = !t->cancelled && !p.released;
         if (p.released) {
-            if (e && !t->cancelled && !p.cancelled && e->kind == Kind::Button) impl.events.push_back({UiEvent::Type::Click, t->owner});
+            if (e && !t->cancelled && !p.cancelled) {
+                if (e->kind == Kind::Button) {
+                    impl.events.push_back({UiEvent::Type::Click, t->owner});
+                } else if (e->kind == Kind::Toggle) {
+                    e->spec.on = !e->spec.on;
+                    if (Remembered* r = impl.rememberFor(*e)) r->on = e->spec.on;
+                    impl.events.push_back({UiEvent::Type::Click, t->owner});
+                    impl.events.push_back({UiEvent::Type::Toggle, t->owner, e->spec.on ? 1.f : 0.f});
+                } else if (e->kind == Kind::Slider) {
+                    impl.events.push_back({UiEvent::Type::Commit, t->owner, e->spec.value});
+                }
+            }
             t->active = false;
         }
     }

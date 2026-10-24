@@ -7,7 +7,10 @@
 
 #include <nova/ui/canvas.hpp>
 
+#include <nova/ecs/tween.hpp>
+
 #include <array>
+#include <optional>
 #include <functional>
 #include <memory>
 #include <string>
@@ -40,6 +43,28 @@ struct UiEvent {
     f32 value = 0;
 };
 
+// One running animation track.
+struct Anim {
+    enum Property : u8 { Scale, Opacity, Offset };
+    UiHandle h;
+    u8 property = Scale;
+    Vec2 from{}, to{};
+    f32 duration = 0, elapsed = 0, delay = 0;
+    Ease ease = Ease::OutQuad;
+    bool yoyo = false, loop = false, backward = false;
+    bool active = false;
+    u64 started = 0; // for reusing the oldest slot when all are busy
+    std::function<void()> onDone;
+};
+inline constexpr size_t kAnimSlots = 64;
+
+// Values set through references (and changed by the player), re-applied after a reload.
+struct Remembered {
+    std::optional<std::string> text, sprite, style;
+    std::optional<f32> value;
+    std::optional<bool> on, visible, enabled;
+};
+
 // A pointer the UI owns, from press until release.
 struct Touch {
     u64 pointer = 0;
@@ -62,6 +87,12 @@ struct Canvas::Impl {
     std::array<Touch, 10> touches{};
     std::vector<UiEvent> events;
     std::vector<UiHandle> hitScratch, hitStack;
+    std::array<Anim, kAnimSlots> anims{};
+    u64 animCounter = 0;
+    std::unordered_map<std::string, Remembered, IdHash, std::equal_to<>> remembered;
+
+    // The remembered values for an element's id (null for elements without one).
+    Remembered* rememberFor(const Element& e);
 
     // Replaces the binding of `h` (by its id when it has one) with a copy changed by `edit`.
     void bind(UiHandle h, const std::function<void(Binding&)>& edit);
