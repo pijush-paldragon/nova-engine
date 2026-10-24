@@ -11,6 +11,9 @@ class SaveStore;
 class Random;
 class FrameArena;
 struct AppOptions;
+namespace ui {
+struct UiShared;
+}
 
 // Engine subsystems a scene can reach. Owned by the App; tests may leave unused ones null.
 struct Services {
@@ -23,6 +26,7 @@ struct Services {
     const AppOptions* options = nullptr;
     Random* random = nullptr;
     FrameArena* frame = nullptr;
+    ui::UiShared* ui = nullptr; // shared UI theme and textures
 };
 
 } // namespace nova

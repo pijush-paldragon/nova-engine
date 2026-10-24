@@ -5,6 +5,7 @@
 #include <nova/ecs/world.hpp>
 #include <nova/render/camera.hpp>
 #include <nova/scene/timers.hpp>
+#include <nova/ui/canvas.hpp>
 
 namespace nova {
 
@@ -19,7 +20,7 @@ class Random;
 struct AppOptions;
 struct Services;
 
-// Base class for game scenes. A scene owns its world (entities + physics), timers and camera;
+// Base class for game scenes. A scene owns its world (entities + physics), timers, camera and UI;
 // everything else is reached through the accessors. Override only the hooks you need.
 class Scene {
 public:
@@ -43,6 +44,7 @@ protected:
     Physics& physics() { return physics_; }
     Timers& timers() { return timers_; }
     Camera2D& camera() { return camera_; }
+    ui::Canvas& ui() { return ui_; }
     Assets& assets();
     Audio& audio();
     Text& text();
@@ -61,6 +63,7 @@ private:
     Physics physics_{world_, {0, 980}};
     Timers timers_;
     Camera2D camera_;
+    ui::Canvas ui_;
     Services* services_ = nullptr;
     SceneStack* stack_ = nullptr;
     ScopeId scope_ = kGlobalScope;

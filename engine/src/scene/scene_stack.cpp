@@ -8,6 +8,7 @@
 #include <nova/scene/scene_stack.hpp>
 #include <render/renderer_backend.hpp>
 #include <text/text_backend.hpp>
+#include <ui/ui_backend.hpp>
 
 namespace nova {
 
@@ -29,6 +30,7 @@ void SceneStack::enter(std::unique_ptr<Scene> scene) {
     scene->services_ = &services_;
     scene->stack_ = this;
     scene->scope_ = nextScope_++;
+    ui::uiAttach(scene->ui_, &services_);
     services_.assets->setActiveScope(scene->scope_);
     Scene& entered = *scene;
     scenes_.push_back(std::move(scene));
