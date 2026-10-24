@@ -11,6 +11,7 @@ See [docs/NEW_GAME.md](docs/NEW_GAME.md) for the full workflow.
 - **Rendering:** SDL3's renderer, Metal first on iOS/macOS and Vulkan first on Android, with automatic OpenGL / OpenGL ES fallback. Sprites are sorted and batched per texture, so a frame is typically 1–4 draw calls.
 - **Game model:** ECS ([EnTT](https://github.com/skypjack/entt)) behind a thin `nova::World` API, plus scenes, systems, timers and tweens.
 - **Built in:** Box2D physics, SDL3_mixer audio, SDL3_ttf text, particles, save data, touch/mouse/keyboard input, safe-area aware layout, debug overlay.
+- **UI and text:** retained UI from JSON layout files with live reload; translations per language (plurals, runtime switching), HarfBuzz shaping with fallback fonts for CJK, Arabic and Indic scripts, right-to-left mirroring, wrapping and shrink-to-fit, and BBCode-style rich text with inline icons. See [Localization and text](docs/NEW_GAME.md#8-localization-and-text).
 - **Memory:** every object has one owner; textures, sounds, fonts and entities are referenced by generational handles, so a stale reference is a safe null, never a crash. Debug builds fail loudly if a gameplay frame allocates or anything leaks.
 
 ## Layout
@@ -27,7 +28,7 @@ GameStudio/
 │  ├─ templates/game/           what tools/new_game.py copies into a new game
 │  ├─ games/brickbreaker/       sample game: src/, assets/, tests/, platforms/ios, platforms/android
 │  ├─ third_party/              SDL, SDL_ttf (+ FreeType, HarfBuzz), SDL_mixer, box2d, entt, doctest, yyjson, Monocypher, zstd (git submodules, pinned tags)
-│  ├─ tools/                    new_game.py, pack_atlas.py (sprite atlases), asset generator, font fetcher
+│  ├─ tools/                    new_game.py, pack_atlas.py (sprite atlases), fetch_fonts.py (Noto subsets), check_strings.py (translations), asset generator
 │  └─ docs/                     NEW_GAME.md, design specs and plans
 ├─ MyGame/                      your games: separate folders (and git repos) beside the engine
 └─ AnotherGame/
@@ -109,6 +110,7 @@ The environment switches and the overlay toggle exist only in debug builds; rele
 | `NOVA_DEBUG_OVERLAY=1` | Start with the overlay visible |
 | `NOVA_RENDER_DRIVER=opengl` (or `opengles2`, `vulkan`, `metal`, `software`) | Force a render backend, e.g. to test the fallback (Android: `-PnovaRenderDriver=...`) |
 | `NOVA_LOG_INPUT=1` | Log every touch/mouse event (device input debugging) |
+| `NOVA_LANG=ja` | Start in this language (one of `assets/text/languages.json`), overriding the saved and device choice |
 | `--autoplay` | Games may drive themselves (Brick Breaker's paddle plays) |
 | `--frames N` | Run N frames at a fixed 60 Hz step, then tear down and run the leak check (non-zero exit on leaks) |
 | `--fail-on-alloc` | Fail if a steady-state gameplay frame allocates on the game thread |
@@ -117,7 +119,7 @@ The environment switches and the overlay toggle exist only in debug builds; rele
 
 ## Assets
 
-The sample's sprites, atlas, sound effects and music loop are generated (Python standard library only); the font is [Fredoka](https://github.com/google/fonts/tree/main/ofl/fredoka) under the SIL Open Font License (`games/brickbreaker/assets/fonts/OFL.txt`).
+The sample's sprites, atlas, sound effects and music loop are generated (Python standard library only); the font is [Fredoka](https://github.com/google/fonts/tree/main/ofl/fredoka) under the SIL Open Font License (`games/brickbreaker/assets/fonts/OFL.txt`); the Japanese and Arabic fonts are subsets of Google's [Noto Sans JP](https://github.com/google/fonts/tree/main/ofl/notosansjp) and [Noto Sans Arabic](https://github.com/google/fonts/tree/main/ofl/notosansarabic), also OFL (`OFL-Noto.txt`). The engine's test fonts are Noto subsets too (`engine/tests/data/fonts/OFL.txt`).
 
 ```bash
 python3 tools/gen_assets.py && bash tools/fetch_font.sh && python3 tools/gen_assets.py --check

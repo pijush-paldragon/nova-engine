@@ -36,6 +36,14 @@ With several devices attached, choose one with `ANDROID_SERIAL=<serial>`.
 
 The title screen's UI is `assets/ui/title.json`, styled by `assets/ui/theme.json`. Edit either while a macOS debug build runs and the screen updates within a second. See "Building UI" in the engine's `docs/NEW_GAME.md`.
 
+## Text and languages
+
+Strings live in `assets/text/en.json` (the start button uses `"@title.start"`). To add a language,
+copy it to `<lang>.json`, translate it, add the tag to `assets/text/languages.json`, and check
+it with `python3 <engine>/tools/check_strings.py assets/text`. Run a debug build with
+`NOVA_LANG=<lang>` to try it. Fonts for other scripts, plurals, rich text and right-to-left
+languages: "Localization and text" in the engine's `docs/NEW_GAME.md`.
+
 ## Sprite atlases
 
 Keep each sprite as its own PNG in a folder such as `art/gameplay/`, then pack it:

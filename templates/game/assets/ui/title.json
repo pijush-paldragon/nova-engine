@@ -1,10 +1,11 @@
 {
   // The title screen's UI. Edit this file while a debug build runs on your Mac and the change
-  // appears within a second. The logo is a world sprite drawn by TitleScene.
+  // appears within a second. The logo is a world sprite drawn by TitleScene. "@title.start" is
+  // a key into text/en.json (and any other language you add).
   "type": "panel", "width": 720, "height": 1280, "anchor": "center", "layout": "column", "align": "center",
   "padding": [700, 0, 0, 0], "gap": 48,
   "children": [
     { "type": "label", "id": "title", "style": "title", "text": "Title" },
-    { "type": "button", "id": "start", "style": "primary", "text": "Start", "width": 320 }
+    { "type": "button", "id": "start", "style": "primary", "text": "@title.start", "width": 320, "overflow": "shrink" }
   ]
 }

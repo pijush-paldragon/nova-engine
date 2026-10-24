@@ -1,0 +1,10 @@
+{
+  // Your game's text. Layout files use a key as "@title.start"; code uses
+  // ui().label("x").setKey("hud.score", {{"score", n}}). To add a language, copy this file to
+  // <lang>.json (de, ja, ar, pt-BR, ...), translate the values, add the tag to languages.json,
+  // and run: python3 <engine>/tools/check_strings.py assets/text
+  "language": "en",
+  "strings": {
+    "title": { "start": "Start" }
+  }
+}

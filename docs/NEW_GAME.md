@@ -251,6 +251,106 @@ void MenuScene::onEnter() {
   Use `char` buffers and `snprintf`, as with `TextLabel`. Loading a screen, opening a popup,
   adding elements and binding callbacks count as setup, so they're fine mid-game.
 
+## 8. Localization and text
+
+Text the player reads lives in `assets/text/<lang>.json`, one file per language (BCP-47 tags:
+`en`, `de`, `ja`, `ar`, `pt-BR`, ...), listed in `assets/text/languages.json`
+(`["en", "de", "ja"]`). English is the fallback for every other language.
+
+```json
+{ "language": "de",
+  "fonts": ["fonts/NotoSansJP-sub.ttf"],
+  "strings": {
+    "menu": { "play": "Spielen", "best": "Rekord: [icon=sprites/coin] {score}" },
+    "hud":  { "lives": { "one": "{count} Leben", "other": "{count} Leben" } } } }
+```
+
+- **Keys:** nested objects flatten to dotted keys (`menu.play`). In a layout file, text starting
+  with `@` is a key: `"text": "@menu.play"` (`@@` is a literal `@`). In code,
+  `ui().label("best").setKey("menu.best", {{"score", best}})`; a world `TextLabel` has the same
+  `setKey`. Keyed text re-renders by itself when the language changes. `setText` stays literal.
+  `{name}` placeholders take `i64`, `f64` or `string_view` values; `{{` is a literal brace.
+- **Plurals:** an object of `zero one two few many other` forms is a plural entry. Pass the
+  number as `count`: `setKey("hud.lives", {{"count", lives}})` picks the right form for the
+  language (CLDR rules: English one/other, French 0 and 1 are "one", Russian/Polish
+  one/few/many, Arabic all six, Japanese/Chinese/Korean only "other"). `text().lang().plural(buf,
+  key, n)` does the same into your own buffer.
+- **Which language:** the player's saved choice, else the first of the device's preferred
+  languages you ship (`pt-BR`, then `pt`), else English. `text().lang().setLanguage("ja")`
+  switches every screen at once and remembers the choice. Debug builds: `NOVA_LANG=ja` overrides.
+  A missing key shows `[menu.play]` and logs once; a key missing in one language falls back to
+  English. While a debug build runs on your Mac, saving the language file updates the screen.
+- **Checking translations:** `python3 <engine>/tools/check_strings.py assets/text` lists keys
+  missing or extra versus `en.json`, plural forms a language needs, placeholders that differ,
+  unbalanced tags and `languages.json` mismatches (exit 1 on problems; put it in CI).
+
+### Fonts for other scripts
+
+Your style's font draws what it can; a language file's `"fonts"` list adds fallback fonts for
+the rest (Japanese, Arabic, Hindi, Thai...). Each run of text is drawn with one font and lined
+up on a shared baseline. Ship only what you need: `tools/fetch_fonts.py` downloads Google's Noto
+fonts (OFL) and cuts them down to the characters your language files use. This turned a 10 MB
+Japanese font into 92 KB for Brick Breaker:
+
+```bash
+python3 <engine>/tools/fetch_fonts.py --out assets/fonts --subset-text-from assets/text --keep-ascii NotoSansJP NotoSansArabic
+```
+
+Re-run it after changing translations (subsetting needs `pip install --user fonttools`). If a
+language picker shows each language's name in its own script, list those fonts in every
+language file. A world `TextLabel` keeps the `FontHandle` you gave it: after `setLanguage`,
+fetch the font again (`assets().font(...)`) to get the new language's fallbacks. UI labels do
+this by themselves.
+
+### Long text: wrap, lines and shrink
+
+Labels and buttons (and `TextLabel` with `wrapWidth`, `maxLines`, `lineSpacing`) can take:
+
+| Field | Effect |
+|---|---|
+| `"wrap": true` | Break lines at the content width (spaces, between CJK characters, after dashes; no line starts with `。」` and similar) |
+| `"maxLines": 2` | Keep at most 2 lines and end with "…" |
+| `"overflow": "shrink"` | Step the font down 2 px at a time until the text fits its box, to `"minScale"` (default 0.6) of the style's size. `"clip"` (default) never shrinks |
+| `"lineSpacing": 1.2` | Line height multiplier |
+| `"textAlign": "start"` | `start`/`end` follow the language's direction (default `start`); `left`, `center`, `right` are fixed |
+
+A fit-width label wraps at its `maxWidth`; give long German or French buttons a fixed or fill
+width and `"overflow": "shrink"`.
+
+### Rich text
+
+A label whose text contains tags is laid out as rich text:
+`"[b]Buy[/b] for [icon=sprites/coin] [color=gold]250[/color]"`.
+
+- `[b]` uses the style's `"boldFont"` (theme.json) if set, else a synthetic bold; `[i]` italic.
+- `[color=#ffcc00]`, `[color=#ffcc0080]` or a name from theme.json's `"colors": {"gold": "#ffd166"}`.
+- `[size=1.5]` scales the font; `[style=hud]` takes another theme style's font, size and colour.
+- `[icon=sprites/coin]` draws an atlas sprite as tall as the line, on the baseline; `scale=0.8`
+  resizes it.
+- Tags nest; `[[` is a literal `[`. A tag that is unknown, misspelled or never closed shows as
+  written and logs once in debug builds.
+- Placeholder values are escaped, so a player's name like `[color=red]x` shows as typed and
+  can't add tags.
+
+### Right-to-left languages
+
+When the language reads right to left (`ar`, `he`, `fa`, `ur`), UI mirrors: rows run right to
+left, anchors, `justify`, column `start`/`end` alignment, padding and `offset.x` swap sides, and
+sliders, switches and left/right progress bars run from the right. `"mirror": false` keeps an
+element and its subtree as authored (a media-control row, a map). Images never flip on their own;
+give an image `"spriteRtl"` to swap its sprite. Words run right to left while numbers and Latin
+or CJK phrases keep their own order. This is word-level ordering, not the full Unicode
+bidirectional algorithm. Avoid brackets or other punctuation around numbers inside right-to-left
+text (write `النقاط 10 - المستوى 2`, not `(المستوى 2)`), and keep a rich-text paragraph to one
+direction.
+
+### Performance
+
+Loading a language, switching, and a label's first layout are setup work. A keyed HUD label
+updated every frame allocates nothing (its values are stored inline: up to 4 arguments, text
+values up to 31 bytes). Rich text re-parses when its text changes, so keep it for menus rather
+than a per-frame counter.
+
 ## The rules of the engine
 
 - **Include only `<nova/...>`.** SDL, Box2D and SDL_mixer/ttf headers aren't on a game's include path, by design.

@@ -64,6 +64,19 @@ class GenerateTests(unittest.TestCase):
         self.assertIn("styles", theme)
         self.assertIn('ui().load("ui/title.json")', (out / "src/scenes/title_scene.cpp").read_text())
 
+    def test_generated_game_has_english_strings(self):
+        out = self.gen(self.tmp / "MyGame")
+        en = json.loads(strip_comments((out / "assets/text/en.json").read_text(encoding="utf-8")))
+        self.assertEqual(en["language"], "en")
+        self.assertEqual(en["strings"]["title"]["start"], "Start")
+        self.assertEqual(json.loads((out / "assets/text/languages.json").read_text()), ["en"])
+        title = json.loads(strip_comments((out / "assets/ui/title.json").read_text()))
+        start = next(c for c in title["children"] if c.get("id") == "start")
+        self.assertEqual(start["text"], "@title.start")
+        checker = new_game.ENGINE_ROOT / "tools" / "check_strings.py"
+        r = subprocess.run([sys.executable, str(checker), str(out / "assets/text")], capture_output=True, text=True)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+
     def test_gitignore_protects_pack_key(self):
         out = self.gen(self.tmp / "MyGame")
         self.assertIn(".nova/", (out / ".gitignore").read_text().splitlines())
