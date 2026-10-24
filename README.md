@@ -26,7 +26,7 @@ GameStudio/
 │  ├─ platforms/android/        nova-app.gradle (shared Android build logic) + NovaActivity
 │  ├─ templates/game/           what tools/new_game.py copies into a new game
 │  ├─ games/brickbreaker/       sample game: src/, assets/, tests/, platforms/ios, platforms/android
-│  ├─ third_party/              SDL, SDL_ttf, SDL_mixer, box2d, entt, doctest (git submodules, pinned tags)
+│  ├─ third_party/              SDL, SDL_ttf (+ FreeType, HarfBuzz), SDL_mixer, box2d, entt, doctest, yyjson, Monocypher, zstd (git submodules, pinned tags)
 │  ├─ tools/                    new_game.py, pack_atlas.py (sprite atlases), asset generator, font fetcher
 │  └─ docs/                     NEW_GAME.md, design specs and plans
 ├─ MyGame/                      your games: separate folders (and git repos) beside the engine
@@ -46,7 +46,7 @@ git clone --recursive git@github.com:pijush-paldragon/nova-engine.git
 If you cloned without `--recursive`:
 
 ```bash
-git submodule update --init && git -C third_party/SDL_ttf submodule update --init external/freetype
+git submodule update --init && git -C third_party/SDL_ttf submodule update --init external/freetype external/harfbuzz
 ```
 
 ## macOS (iterate here)

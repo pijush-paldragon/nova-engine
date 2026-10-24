@@ -28,7 +28,7 @@ set(BUILD_SHARED_LIBS OFF)
 
 # --- SDL3_ttf ---------------------------------------------------------------
 nova_force_option(SDLTTF_VENDORED ON)
-nova_force_option(SDLTTF_HARFBUZZ OFF)
+nova_force_option(SDLTTF_HARFBUZZ ON) # shaping: Arabic joining, Indic clusters, ligatures, kerning
 nova_force_option(SDLTTF_PLUTOSVG OFF)
 nova_force_option(SDLTTF_SAMPLES OFF)
 nova_force_option(SDLTTF_INSTALL OFF)
