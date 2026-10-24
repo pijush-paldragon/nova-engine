@@ -49,6 +49,10 @@ FontHandle Assets::font(std::string_view path, f32 sizePx, ScopeId scope) {
     std::string key(path);
     key += '@';
     key += std::to_string(int(sizePx + 0.5f));
+    if (lang_ && !lang_->language().empty()) {
+        key += '#';
+        key += lang_->language();
+    }
     FontHandle* h = fonts_->get(fonts_->acquire(key, resolve(scope)));
     return h ? *h : FontHandle{};
 }

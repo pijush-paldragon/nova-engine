@@ -98,6 +98,7 @@ Result<void> App::init(int argc, char** argv) {
     save_ = std::make_unique<SaveStore>(pref ? std::string(pref) : std::string());
     SDL_free(pref);
     save_->load();
+    assets_->setLocalization(&text_->lang());
     chooseStartupLanguage();
 
     services_.renderer = renderer_.get();

@@ -68,6 +68,8 @@ public:
     using FontLoader = std::function<std::optional<FontHandle>(std::string_view key)>;
     using FontUnloader = std::function<void(FontHandle)>;
     void setFontLoader(FontLoader loadFont, FontUnloader unloadFont);
+    // Engine: fonts are loaded per language (each language adds its fallback fonts).
+    void setLocalization(const Localization* lang) { lang_ = lang; }
 
     // Engine: scope bookkeeping driven by SceneStack.
     void setActiveScope(ScopeId scope) { activeScope_ = scope; }
@@ -96,6 +98,7 @@ private:
     std::optional<AssetCache<SoundHandle, SoundTag>> sounds_;
     std::optional<AssetCache<MusicHandle, MusicTag>> musics_;
     std::optional<AssetCache<FontHandle, FontTag>> fonts_;
+    const Localization* lang_ = nullptr;
     std::unordered_set<std::string> reportedMissing_;
 };
 

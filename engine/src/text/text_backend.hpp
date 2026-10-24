@@ -10,6 +10,7 @@
 
 struct SDL_Renderer;
 struct TTF_Text;
+struct TTF_Font;
 
 namespace nova {
 
@@ -24,6 +25,8 @@ public:
     // key = "<path>@<sizePx>", e.g. "fonts/Fredoka.ttf@48". Size is in design units.
     std::optional<FontHandle> loadFont(std::string_view key);
     void unloadFont(FontHandle font);
+    // The SDL_ttf font behind a handle (engine use and tests), or null.
+    TTF_Font* ttfFont(FontHandle font) const;
 
     // Fonts are rasterised at design size x pixel scale so glyphs stay crisp on every screen.
     void setPixelScale(f32 scale);

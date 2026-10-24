@@ -1,6 +1,7 @@
 #include "text/text_backend.hpp"
 
 #include "core/parse.hpp"
+#include "text/localization_impl.hpp"
 #include "platform/asset_io.hpp"
 
 #include <nova/core/alloc_stats.hpp>
@@ -42,6 +43,8 @@ struct TextCache {
 };
 
 struct FontEntry {
+    // Declared first, destroyed last: the main font refers to its fallbacks.
+    std::vector<std::unique_ptr<TTF_Font, FontDeleter>> fallbacks;
     std::unique_ptr<TTF_Font, FontDeleter> font;
     f32 sizeDesign;
 };
@@ -99,7 +102,22 @@ TextBackend::~TextBackend() {
     if (u32 live = liveTextCount(); live > 0) log::error("TextBackend destroyed with %u labels alive", live);
 }
 
+namespace {
+
+TTF_Font* openFont(std::string_view rel, f32 pixels) {
+    SDL_IOStream* io = openAsset(rel);
+    return io ? TTF_OpenFontIO(io, true, pixels) : nullptr;
+}
+
+} // namespace
+
 std::optional<FontHandle> TextBackend::loadFont(std::string_view key) {
+    // "path@size" or "path@size#lang": a language adds its fallback fonts and language tag.
+    std::string_view lang;
+    if (size_t hash = key.rfind('#'); hash != std::string_view::npos) {
+        lang = key.substr(hash + 1);
+        key = key.substr(0, hash);
+    }
     size_t at = key.rfind('@');
     f32 size = 0;
     if (at == std::string_view::npos ||
@@ -108,13 +126,37 @@ std::optional<FontHandle> TextBackend::loadFont(std::string_view key) {
         return std::nullopt;
     }
     std::string path = assetPath(key.substr(0, at));
-    SDL_IOStream* io = openAsset(key.substr(0, at));
-    TTF_Font* font = io ? TTF_OpenFontIO(io, true, size * pixelScale_) : nullptr;
+    TTF_Font* font = openFont(key.substr(0, at), size * pixelScale_);
     if (!font) {
         log::error("Font '%s' failed to load: %s", path.c_str(), SDL_GetError());
         return std::nullopt;
     }
-    return impl_->fonts.insert(FontEntry{std::unique_ptr<TTF_Font, FontDeleter>(font), size});
+    FontEntry entry{{}, std::unique_ptr<TTF_Font, FontDeleter>(font), size};
+    const LanguageInfo& info = lang_->impl().info();
+    if (!lang.empty() && lang == info.tag) {
+        // Direction and script are left to HarfBuzz per text: forcing RTL on a font would also
+        // reverse Latin text ("Score 10") shown in an Arabic UI. The language tag picks local
+        // letter forms.
+        std::string tag(lang);
+        TTF_SetFontLanguage(font, tag.c_str());
+        for (const std::string& fallbackPath : info.fonts) {
+            TTF_Font* fallback = openFont(fallbackPath, size * pixelScale_);
+            if (!fallback) {
+                log::error("Fallback font '%s' for '%s' failed to load: %s", fallbackPath.c_str(), tag.c_str(),
+                           SDL_GetError());
+                continue;
+            }
+            TTF_SetFontLanguage(fallback, tag.c_str());
+            TTF_AddFallbackFont(font, fallback);
+            entry.fallbacks.emplace_back(fallback);
+        }
+    }
+    return impl_->fonts.insert(std::move(entry));
+}
+
+TTF_Font* TextBackend::ttfFont(FontHandle font) const {
+    const FontEntry* f = impl_->fonts.get(font);
+    return f ? f->font.get() : nullptr;
 }
 
 void TextBackend::unloadFont(FontHandle font) {
@@ -126,7 +168,10 @@ void TextBackend::unloadFont(FontHandle font) {
 void TextBackend::setPixelScale(f32 scale) {
     if (scale <= 0 || scale == pixelScale_) return;
     pixelScale_ = scale;
-    impl_->fonts.forEach([scale](FontHandle, FontEntry& f) { TTF_SetFontSize(f.font.get(), f.sizeDesign * scale); });
+    impl_->fonts.forEach([scale](FontHandle, FontEntry& f) {
+        TTF_SetFontSize(f.font.get(), f.sizeDesign * scale);
+        for (auto& fallback : f.fallbacks) TTF_SetFontSize(fallback.get(), f.sizeDesign * scale);
+    });
     ++impl_->fontGeneration;
 }
 

@@ -78,3 +78,69 @@ TEST_CASE("Fallback font supplies missing glyphs") {
     CHECK(std::abs(withFallback - width(jp.f, "日本語")) <= 1);
     TTF_ClearFallbackFonts(game.f);
 }
+
+// ---- Language fonts (TextBackend + Assets) ------------------------------------------------------
+
+#include "support/ui_fixture.hpp"
+
+#include <nova/platform/file.hpp>
+#include <text/localization_impl.hpp>
+
+namespace {
+
+std::optional<std::string> readTestText(std::string_view path) {
+    std::string full = std::string(NOVA_TEST_DATA_DIR) + std::string(path);
+    size_t size = 0;
+    void* data = SDL_LoadFile(full.c_str(), &size);
+    if (!data) return std::nullopt;
+    std::string text(static_cast<const char*>(data), size);
+    SDL_free(data);
+    return text;
+}
+
+// Assets read engine/tests/data/ (its fonts/ folder holds the Noto subsets).
+struct LangFixture : nova::testing::UiFixture {
+    LangFixture() {
+        nova::setAssetRoot(NOVA_TEST_DATA_DIR);
+        text->lang().impl().setReader(readTestText);
+        assets->setLocalization(&text->lang());
+    }
+    ~LangFixture() { nova::setAssetRoot(NOVA_TEST_ASSET_ROOT); }
+};
+
+} // namespace
+
+TEST_CASE("Language fonts attach as fallbacks") {
+    LangFixture fx;
+    REQUIRE(fx.text->lang().setLanguage("ja"));
+    nova::FontHandle ja = fx.assets->font("fonts/NotoSansHebrew-sub.ttf", 32); // no Japanese glyphs itself
+    REQUIRE(ja.valid());
+    Font jp(fontPath("NotoSansJP-sub.ttf"), 32 * fx.renderer->pixelScale());
+    const nova::Vec2 shaped = fx.text->measure(ja, "日本語");
+    CHECK(std::abs(shaped.x * fx.renderer->pixelScale() - width(jp.f, "日本語")) <= 2);
+
+    REQUIRE(fx.text->lang().setLanguage("en"));
+    nova::FontHandle en = fx.assets->font("fonts/NotoSansHebrew-sub.ttf", 32);
+    CHECK(!(en == ja)); // a different font object for a different language
+}
+
+TEST_CASE("Right-to-left language lays text right to left") {
+    LangFixture fx;
+    REQUIRE(fx.text->lang().setLanguage("ar"));
+    nova::FontHandle f = fx.assets->font("fonts/NotoSansHebrew-sub.ttf", 32);
+    TTF_Font* font = fx.text->ttfFont(f);
+    REQUIRE(font);
+    auto firstAndLastX = [&](const char* s, int lastOffset) {
+        TTF_Text* t = TTF_CreateText(nullptr, font, s, 0);
+        REQUIRE(t);
+        TTF_SubString a{}, b{};
+        REQUIRE(TTF_GetTextSubString(t, 0, &a));
+        REQUIRE(TTF_GetTextSubString(t, lastOffset, &b));
+        TTF_DestroyText(t);
+        return std::pair<int, int>{a.rect.x, b.rect.x};
+    };
+    auto [arFirst, arLast] = firstAndLastX("سلام", 6); // Arabic (via the fallback): first letter on the right
+    CHECK(arFirst > arLast);
+    auto [enFirst, enLast] = firstAndLastX("abc", 2);  // Latin in the Arabic UI stays left to right
+    CHECK(enFirst < enLast);
+}
