@@ -5,9 +5,11 @@
 #include <nova/text/text.hpp>
 
 #include <optional>
+#include <string>
 #include <string_view>
 
 struct SDL_Renderer;
+struct TTF_Text;
 
 namespace nova {
 
@@ -31,9 +33,39 @@ public:
 
     u32 liveTextCount() const;
     u32 liveFontCount() const;
+    f32 pixelScale() const { return pixelScale_; }
 
 private:
+    friend class TextRun;
     TextBackend() = default;
+    SDL_Renderer* renderer_ = nullptr;
+};
+
+// One piece of laid-out text owned by engine code (UI labels). Re-lays out only when its font,
+// string or the pixel scale changes; changing colour or opacity is cheap.
+class TextRun {
+public:
+    explicit TextRun(TextBackend& backend) : backend_(&backend) {}
+    ~TextRun();
+    TextRun(const TextRun&) = delete;
+    TextRun& operator=(const TextRun&) = delete;
+
+    // False if the font is gone or the text could not be created.
+    bool set(FontHandle font, std::string_view s);
+    // Size in design units.
+    Vec2 size();
+    // Draws with its top-left at `topLeft` (design units), scaled about that point.
+    void draw(Vec2 topLeft, const ScreenFit& fit, Color color, f32 scale);
+
+private:
+    bool refresh(); // re-lays out after a font size (pixel scale) change
+
+    TextBackend* backend_;
+    TTF_Text* text_ = nullptr;
+    FontHandle font_;
+    std::string string_;
+    u32 fontGeneration_ = 0;
+    Color color_{0, 0, 0, 0};
 };
 
 } // namespace nova

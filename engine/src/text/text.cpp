@@ -90,6 +90,7 @@ Result<std::unique_ptr<TextBackend>> TextBackend::create(SDL_Renderer* renderer)
     }
     std::unique_ptr<TextBackend> text(new TextBackend());
     text->impl_->engine = engine;
+    text->renderer_ = renderer;
     text->impl_->drawList.reserve(64);
     return text;
 }
@@ -188,6 +189,69 @@ void TextBackend::collectAndDraw(World& world, const ScreenFit& fit, Vec2 viewOr
     });
     memory::DriverAllocScope driver;
     for (const DrawItem& item : items) TTF_DrawRendererText(item.text, std::round(item.x), std::round(item.y));
+}
+
+// ---- TextRun ------------------------------------------------------------------------------
+
+TextRun::~TextRun() {
+    if (text_) TextDeleter{}(text_);
+}
+
+bool TextRun::set(FontHandle font, std::string_view s) {
+    FontEntry* f = backend_->impl_->fonts.get(font);
+    if (!f) return false;
+    const bool sameFont = font_ == font && text_;
+    if (sameFont && s == string_ && fontGeneration_ == backend_->impl_->fontGeneration) return true;
+    string_.assign(s.data(), s.size()); // reuses capacity: no allocation unless the text grows
+    memory::DriverAllocScope driver;    // SDL_ttf layout
+    if (!sameFont) {
+        if (text_) TextDeleter{}(text_);
+        text_ = TTF_CreateText(backend_->impl_->engine, f->font.get(), string_.data(), string_.size());
+        if (!text_) return false;
+        gLiveTexts.fetch_add(1, std::memory_order_relaxed);
+        color_ = {0, 0, 0, 0};
+    } else {
+        TTF_SetTextString(text_, string_.data(), string_.size());
+    }
+    font_ = font;
+    fontGeneration_ = backend_->impl_->fontGeneration;
+    ++backend_->rebuilds_;
+    return true;
+}
+
+bool TextRun::refresh() {
+    if (!text_ || !backend_->impl_->fonts.get(font_)) return false;
+    if (fontGeneration_ != backend_->impl_->fontGeneration) {
+        memory::DriverAllocScope driver;
+        TTF_SetTextString(text_, string_.data(), string_.size());
+        fontGeneration_ = backend_->impl_->fontGeneration;
+    }
+    return true;
+}
+
+Vec2 TextRun::size() {
+    if (!refresh()) return {};
+    int w = 0, h = 0;
+    memory::DriverAllocScope driver; // may lay out lazily
+    TTF_GetTextSize(text_, &w, &h);
+    return Vec2{f32(w), f32(h)} / backend_->pixelScale_;
+}
+
+void TextRun::draw(Vec2 topLeft, const ScreenFit& fit, Color color, f32 scale) {
+    if (!refresh() || color.a == 0) return;
+    if (!(color == color_)) {
+        TTF_SetTextColor(text_, color.r, color.g, color.b, color.a);
+        color_ = color;
+    }
+    Vec2 px = (topLeft - Vec2{fit.visible.x, fit.visible.y}) * fit.scale;
+    memory::DriverAllocScope driver;
+    if (scale == 1) {
+        TTF_DrawRendererText(text_, std::round(px.x), std::round(px.y));
+        return;
+    }
+    SDL_SetRenderScale(backend_->renderer_, scale, scale);
+    TTF_DrawRendererText(text_, px.x / scale, px.y / scale);
+    SDL_SetRenderScale(backend_->renderer_, 1, 1);
 }
 
 u32 TextBackend::liveTextCount() const { return gLiveTexts.load(std::memory_order_relaxed); }

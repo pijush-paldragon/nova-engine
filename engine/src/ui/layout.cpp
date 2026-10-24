@@ -29,7 +29,7 @@ f32 preferred(const Size& s, f32 measured, f32 lo, f32 hi) {
 }
 
 Insets paddingOf(const Element& e, const LayoutEnv& env, const Rect& box) {
-    Insets p = e.spec.padding;
+    Insets p = e.padding;
     if (e.spec.safeArea) {
         const Rect& s = env.safeArea;
         p.left += std::max(0.f, s.x - box.x);
@@ -91,7 +91,7 @@ void measureLayer(ElementStore& store, UiHandle root, MeasureFn measure, void* c
         Vec2 kids = e.spec.layout == LayoutMode::Column ? Vec2{cross, main + gaps}
                   : e.spec.layout == LayoutMode::Row   ? Vec2{main + gaps, cross}
                                                        : Vec2{main, cross};
-        const Insets& p = e.spec.padding;
+        const Insets& p = e.padding;
         e.measured = {std::max(content.x, kids.x) + p.left + p.right, std::max(content.y, kids.y) + p.top + p.bottom};
     }
 }
@@ -224,10 +224,14 @@ void markLayoutDirty(ElementStore& store, UiHandle h) {
 Rect visualBox(const ElementStore& store, UiHandle h) {
     const Element* e = store.live(h);
     if (!e) return {};
+    // Apply each element's local transform, innermost first: offset, then scale about the
+    // (offset) centre of its own box.
     Rect r = e->box;
     for (const Element* cur = e; cur; cur = store.get(cur->parent)) {
-        r.x += cur->spec.offset.x;
-        r.y += cur->spec.offset.y;
+        const Vec2 off = cur->spec.offset;
+        const Vec2 c = cur->box.center() + off;
+        const f32 s = cur->scale;
+        r = {c.x + (r.x + off.x - c.x) * s, c.y + (r.y + off.y - c.y) * s, r.w * s, r.h * s};
     }
     return r;
 }

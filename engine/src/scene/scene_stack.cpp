@@ -30,7 +30,7 @@ void SceneStack::enter(std::unique_ptr<Scene> scene) {
     scene->services_ = &services_;
     scene->stack_ = this;
     scene->scope_ = nextScope_++;
-    ui::uiAttach(scene->ui_, &services_);
+    ui::uiAttach(scene->ui_, &services_, scene->scope_);
     services_.assets->setActiveScope(scene->scope_);
     Scene& entered = *scene;
     scenes_.push_back(std::move(scene));

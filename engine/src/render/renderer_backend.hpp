@@ -29,6 +29,8 @@ public:
 
     // Returns an invalid handle (and logs) if the file is missing or not a PNG.
     TextureHandle loadTexture(std::string_view path);
+    // A texture from straight-alpha RGBA8 pixels (engine-generated art such as UI shapes).
+    TextureHandle createTexture(const u8* rgba, int w, int h);
     void destroyTexture(TextureHandle texture);
     TextureHandle checkerboard() const { return checkerboard_; }
     Vec2 textureSizeOf(TextureHandle texture) const;

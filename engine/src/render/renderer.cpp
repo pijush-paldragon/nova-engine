@@ -164,6 +164,18 @@ TextureHandle RendererBackend::loadTexture(std::string_view path) {
     return addTexture(texture, size);
 }
 
+TextureHandle RendererBackend::createTexture(const u8* rgba, int w, int h) {
+    memory::DriverAllocScope driver;
+    SDL_Texture* texture = SDL_CreateTexture(renderer_.get(), SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_STATIC, w, h);
+    if (!texture) {
+        log::error("Texture creation failed: %s", SDL_GetError());
+        return {};
+    }
+    SDL_UpdateTexture(texture, nullptr, rgba, w * 4);
+    SDL_SetTextureScaleMode(texture, SDL_SCALEMODE_LINEAR);
+    return addTexture(texture, {f32(w), f32(h)});
+}
+
 void RendererBackend::destroyTexture(TextureHandle texture) {
     if (texture == checkerboard_) return;
     textures_.remove(texture);

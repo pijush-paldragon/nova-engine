@@ -102,7 +102,10 @@ void ElementRef::setEnabled(bool enabled) {
     if (Element* e = resolve(canvas_, h_)) e->spec.enabled = enabled;
 }
 void ElementRef::setStyle(std::string_view style) {
-    if (Element* e = resolveForLayout(canvas_, h_)) e->spec.style.assign(style.data(), style.size());
+    if (Element* e = resolveForLayout(canvas_, h_)) {
+        e->spec.style.assign(style.data(), style.size());
+        e->resolveDirty = true;
+    }
 }
 void ElementRef::setOpacity(f32 opacity) {
     if (Element* e = resolve(canvas_, h_)) e->spec.opacity = opacity;
@@ -110,7 +113,9 @@ void ElementRef::setOpacity(f32 opacity) {
 void ElementRef::setOffset(Vec2 offset) {
     if (Element* e = resolve(canvas_, h_)) e->spec.offset = offset;
 }
-void ElementRef::setScale(f32) {} // drawn scale arrives with animations (Task 5)
+void ElementRef::setScale(f32 scale) {
+    if (Element* e = resolve(canvas_, h_)) e->scale = scale;
+}
 
 UiHandle ElementRef::addChild(Kind kind, const UiSpec& spec) {
     return canvas_ ? canvas_->impl().store.add(h_, kind, spec) : UiHandle{};
@@ -121,7 +126,10 @@ void ElementRef::remove() {
 }
 
 void ImageRef::setSprite(std::string_view sprite) {
-    if (Element* e = resolveForLayout(canvas_, h_)) e->spec.sprite.assign(sprite.data(), sprite.size());
+    if (Element* e = resolveForLayout(canvas_, h_)) {
+        e->spec.sprite.assign(sprite.data(), sprite.size());
+        e->resolveDirty = true;
+    }
 }
 void LabelRef::setText(std::string_view text) {
     if (Element* e = resolveForLayout(canvas_, h_)) e->spec.text.assign(text.data(), text.size());
@@ -149,15 +157,18 @@ void ProgressRef::setValue(f32 value) {
 
 // ---- Engine hooks ------------------------------------------------------------------------
 
-void uiAttach(Canvas& canvas, Services* services) { canvas.impl().services = services; }
+void uiAttach(Canvas& canvas, Services* services, ScopeId scope) {
+    canvas.impl().services = services;
+    canvas.impl().scope = scope;
+}
+
+void uiReset(Canvas& canvas) {
+    canvas.impl().drawList.layers.clear();
+    canvas.impl().store = ElementStore();
+}
 
 void uiFlush(Canvas& canvas) { canvas.impl().store.flush(); }
 
-void uiUpdate(Canvas& canvas, f32) {
-    Canvas::Impl& impl = canvas.impl();
-    if (!impl.services || !impl.services->renderer) return;
-    const RendererBackend& r = *impl.services->renderer;
-    layoutCanvas(impl.store, LayoutEnv{r.visibleRect(), r.safeArea(), r.pixelScale()}, nullptr, nullptr);
-}
+void uiUpdate(Canvas& canvas, f32) { refreshLayout(canvas.impl()); }
 
 } // namespace nova::ui

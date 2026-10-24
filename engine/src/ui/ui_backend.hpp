@@ -2,17 +2,24 @@
 
 // Engine-side UI hooks, called by the App and SceneStack (game code never calls these).
 
+#include <nova/assets/asset_cache.hpp>
 #include <nova/core/types.hpp>
 
 namespace nova {
 struct Services;
+class RendererBackend;
+class SpriteBatch;
 }
 
 namespace nova::ui {
 
 class Canvas;
 
-void uiAttach(Canvas& canvas, Services* services);
+void uiAttach(Canvas& canvas, Services* services, ScopeId scope);
+// Draws the canvas's layers above its scene: each layer's sprites, then its labels.
+void uiDraw(Canvas& canvas, RendererBackend& renderer, SpriteBatch& batch);
+// Drops every element and cached resource (text runs) while the services still exist.
+void uiReset(Canvas& canvas);
 // Frees elements removed this frame.
 void uiFlush(Canvas& canvas);
 // Advances the UI by dt and re-runs layout where something changed.

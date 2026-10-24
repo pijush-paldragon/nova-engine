@@ -6,6 +6,7 @@
 #include "render/renderer_backend.hpp"
 #include "scene/services.hpp"
 #include "text/text_backend.hpp"
+#include "ui/draw.hpp"
 
 #include <nova/app/app_options.hpp>
 #include <nova/app/fixed_step.hpp>
@@ -57,6 +58,7 @@ private:
     std::unique_ptr<RendererBackend> renderer_;
     std::unique_ptr<AudioBackend> audio_;
     std::unique_ptr<TextBackend> text_;
+    std::unique_ptr<ui::UiShared> uiShared_;
     std::unique_ptr<Assets> assets_;
     std::unique_ptr<SaveStore> save_;
     InputBackend input_;
@@ -67,6 +69,7 @@ private:
 
     FixedStepClock clock_;
     SpriteBatch batch_;
+    SpriteBatch uiBatch_;
     FpsCounter fps_;
     u64 lastTicks_ = 0;
     i64 frameCount_ = 0;

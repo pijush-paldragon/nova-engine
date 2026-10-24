@@ -1,5 +1,7 @@
 #include "app/app.hpp"
 
+#include "ui/ui_backend.hpp"
+
 #include "platform/asset_io.hpp"
 
 #include <nova/core/alloc_stats.hpp>
@@ -103,6 +105,8 @@ Result<void> App::init(int argc, char** argv) {
     services_.options = &options_;
     services_.random = &random_;
     services_.frame = &frame_;
+    uiShared_ = ui::createUiShared(*renderer_);
+    services_.ui = uiShared_.get();
 
     scenes_ = std::make_unique<SceneStack>(services_);
     scenes_->pushScene(config_.firstScene());
@@ -179,6 +183,7 @@ void App::runFrame(f64 dt) {
     updateParticles(top->world_, f32(dt), random_);
     top->timers_.update(f32(dt));
     top->camera_.update(f32(dt), random_);
+    ui::uiUpdate(top->ui_, f32(dt));
 
 #if defined(NOVA_DEV_TOOLS)
     if (input_.keyPressed(Key::F1) || input_.threeFingerTap()) overlay_ = !overlay_;
@@ -186,6 +191,7 @@ void App::runFrame(f64 dt) {
     render(*top);
 
     top->world_.flushDestroyed();
+    ui::uiFlush(top->ui_);
     if (scenes_->applyPending()) framesSinceTransition_ = 0;
     else ++framesSinceTransition_;
     input_.beginFrame(f32(dt));
@@ -202,6 +208,7 @@ void App::render(Scene& top) {
         collectParticles(scene.world_, batch_, origin);
         renderer_->submit(batch_);
         text_->collectAndDraw(scene.world_, renderer_->fit(), origin); // text above the scene's sprites
+        ui::uiDraw(scene.ui_, *renderer_, uiBatch_);                  // the scene's UI above its world
     });
     if (overlay_) {
         FrameStats stats{fps_.fps(),
@@ -278,10 +285,12 @@ bool App::teardownAndCheckLeaks() {
     u32 sounds = audio_ ? audio_->liveAudioCount() : 0;
     u32 fonts = text_ ? text_->liveFontCount() : 0;
     u32 labels = text_ ? text_->liveTextCount() : 0;
-    bool clean = textures <= 1 && sounds == 0 && fonts == 0 && labels == 0; // checkerboard lives with the renderer
+    // The checkerboard and the UI shape texture live with the renderer.
+    const u32 engineTextures = 1 + (uiShared_ && uiShared_->shapes.valid() ? 1 : 0);
+    bool clean = textures <= engineTextures && sounds == 0 && fonts == 0 && labels == 0;
     if (clean) log::info("Leak check: clean");
     else log::error("Leak check: still alive after teardown: %u textures, %u sounds, %u fonts, %u labels",
-                    textures - 1, sounds, fonts, labels);
+                    textures > engineTextures ? textures - engineTextures : 0, sounds, fonts, labels);
     return clean;
 }
 
@@ -292,6 +301,8 @@ void App::shutdown() {
     scenes_.reset(); // scenes (and their worlds) before the assets they reference
     services_.assets = nullptr;
     assets_.reset();
+    services_.ui = nullptr;
+    uiShared_.reset();
     text_.reset();
     audio_.reset();
     unmountPack(); // after everything that streams from it (music)

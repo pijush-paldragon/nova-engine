@@ -14,7 +14,8 @@ u32 layoutCanvas(ElementStore& store, const LayoutEnv& env, MeasureFn measure, v
 // An element and everything that can change its size: marks its layer for layout.
 void markLayoutDirty(ElementStore& store, UiHandle h);
 
-// The box as drawn and hit-tested: the layout box moved by its own and its ancestors' offsets.
+// The box as drawn and hit-tested: the layout box under its own and its ancestors' offsets and
+// scales (element scale only; a style's pressed scale is visual and never shrinks the hit area).
 Rect visualBox(const ElementStore& store, UiHandle h);
 
 } // namespace nova::ui

@@ -1,14 +1,26 @@
 #pragma once
 
 #include <nova/core/handle.hpp>
+#include <nova/render/types.hpp>
+#include <nova/text/text.hpp>
 #include <nova/ui/types.hpp>
+
+#include <memory>
 
 #include <string>
 #include <string_view>
 #include <unordered_map>
 #include <vector>
 
+namespace nova {
+class TextRun;
+}
+
 namespace nova::ui {
+
+struct TextRunDeleter {
+    void operator()(TextRun* run) const; // draw.cpp
+};
 
 // One UI element. Tree links are intrusive handles, so the tree never allocates per node.
 struct Element {
@@ -20,6 +32,16 @@ struct Element {
 
     Rect box{};           // laid-out box, design units (before offset/scale, which are visual)
     Vec2 measured{};      // content size for fit axes, padding included
+    Insets padding;       // effective padding: the spec's, else the style's
+
+    // Visual state and caches resolved from the style (draw.cpp).
+    f32 scale = 1;        // animated scale (Task 5) times nothing else; style scale applies at draw
+    bool pressed = false;
+    bool resolveDirty = true; // style, font or sprite must be looked up again
+    u32 themeGen = 0;
+    FontHandle font;
+    SpriteRegion region;      // Image sprite, or Button icon
+    std::unique_ptr<TextRun, TextRunDeleter> textRun;
 };
 
 // Screen metrics layout depends on.
@@ -70,6 +92,13 @@ public:
     // Searches layers from the top down.
     UiHandle find(std::string_view id) const;
     u32 size() const { return pool_.size(); }
+
+    template <class F>
+    void forEach(F&& fn) {
+        pool_.forEach([&](UiHandle h, Element& e) {
+            if (!e.removed) fn(h, e);
+        });
+    }
 
     template <class F>
     void forEachChild(UiHandle parent, F&& fn) const {

@@ -27,6 +27,7 @@ UiHandle ElementStore::add(UiHandle parent, Kind kind, const UiSpec& spec) {
     Element e;
     e.kind = kind;
     e.spec = spec;
+    e.padding = spec.padding;
     e.parent = parent;
     e.layer = layer;
     UiHandle h = pool_.insert(std::move(e)); // may move storage: re-fetch pointers below
