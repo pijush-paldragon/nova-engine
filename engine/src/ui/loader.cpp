@@ -374,7 +374,7 @@ struct LayoutParser {
 // ---- Theme ----------------------------------------------------------------------------------
 
 constexpr const char* kStyleKeys[] = {"extends",  "background", "outline",   "tint",       "opacity", "scale",
-                                      "padding",  "font",       "fontSize",  "textColor", "clickSound", "states"};
+                                      "padding",  "font",       "boldFont",  "fontSize",  "textColor", "clickSound", "states"};
 constexpr const char* kStateKeys[] = {"background", "tint", "textColor", "opacity", "scale"};
 
 void readBackground(yyjson_val* v, Reader& r, Background& out) {
@@ -469,6 +469,7 @@ Style readStyle(yyjson_val* v, Reader& r) {
         else if (key == "scale") num(val, key, s.scale);
         else if (key == "padding") readProp(r, s.padding, [&](Insets& x) { r.insets(val, key, x); });
         else if (key == "font") txt(val, key, s.font);
+        else if (key == "boldFont") txt(val, key, s.boldFont);
         else if (key == "fontSize") num(val, key, s.fontSize);
         else if (key == "textColor") col(val, key, s.textColor);
         else if (key == "clickSound") txt(val, key, s.clickSound);
@@ -575,6 +576,19 @@ LoadResult loadTheme(std::string_view path, const FileReader& read, Theme& theme
             continue;
         }
         theme.patch(name, readStyle(v, r)); // an existing style (e.g. "default") keeps what isn't given
+    }
+    if (yyjson_val* colors = yyjson_obj_get(root, "colors")) {
+        Reader r{result.errors, file + ": colors"};
+        if (!yyjson_is_obj(colors)) {
+            r.error("must be an object like {\"gold\": \"#ffcc00\"}");
+        } else {
+            yyjson_obj_foreach(colors, idx, max, k, v) {
+                Color c;
+                const std::string name(str(k));
+                if (yyjson_is_str(v) && parseHex(str(v), c)) theme.setColor(name, c);
+                else r.wrong(name, "a colour like \"#rrggbb\" or \"#rrggbbaa\"");
+            }
+        }
     }
     if (!result.errors.empty()) result.firstError = result.errors.front();
     return result;

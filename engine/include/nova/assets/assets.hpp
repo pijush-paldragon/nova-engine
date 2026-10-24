@@ -57,6 +57,8 @@ public:
     MusicHandle music(std::string_view path, ScopeId scope = kActiveScope);
     // sizePx is in design units; the engine rasterises at the screen's real pixel size.
     FontHandle font(std::string_view path, f32 sizePx, ScopeId scope = kActiveScope);
+    // A synthetic bold and/or italic rendering of the font (cached separately from the plain one).
+    FontHandle font(std::string_view path, f32 sizePx, FontStyle style, ScopeId scope = kActiveScope);
 
     // Engine: audio loaders are injected once the audio subsystem exists.
     using SoundLoader = std::function<std::optional<SoundHandle>(std::string_view)>;

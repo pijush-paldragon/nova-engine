@@ -72,6 +72,8 @@ bool isPluralObject(yyjson_val* obj) {
     return true;
 }
 
+bool hasMarkup(std::string_view tmpl) { return tmpl.find('[') != std::string_view::npos; }
+
 struct Writer {
     std::span<char> out;
     size_t n = 0;
@@ -89,7 +91,8 @@ struct Writer {
     }
 };
 
-void putArg(Writer& w, const FormatArg& a) {
+// `escape`: a text value's "[" is doubled, so it shows literally in rich text and can't add tags.
+void putArg(Writer& w, const FormatArg& a, bool escape) {
     char num[32];
     if (const i64* i = std::get_if<i64>(&a.value)) {
         std::snprintf(num, sizeof num, "%lld", static_cast<long long>(*i));
@@ -97,14 +100,20 @@ void putArg(Writer& w, const FormatArg& a) {
     } else if (const f64* f = std::get_if<f64>(&a.value)) {
         std::snprintf(num, sizeof num, "%g", *f);
         w.put(std::string_view(num));
-    } else {
+    } else if (!escape) {
         w.put(std::get<std::string_view>(a.value));
+    } else {
+        for (char c : std::get<std::string_view>(a.value)) {
+            w.put(c);
+            if (c == '[') w.put(c);
+        }
     }
 }
 
 // Fills {name} placeholders in one pass ({{ and }} are literal braces). Values are inserted as
-// they are; a value's own braces are never substituted again.
-size_t fill(std::span<char> out, std::string_view tmpl, std::span<const FormatArg> args, const FormatArg* extra) {
+// they are (with "[" doubled when `escape`); a value's own braces are never substituted again.
+size_t fill(std::span<char> out, std::string_view tmpl, std::span<const FormatArg> args, const FormatArg* extra,
+            bool escape) {
     Writer w{out};
     for (size_t i = 0; i < tmpl.size(); ++i) {
         const char c = tmpl[i];
@@ -123,7 +132,7 @@ size_t fill(std::span<char> out, std::string_view tmpl, std::span<const FormatAr
                 }
                 if (!found && extra && extra->name == name) found = extra;
                 if (found) {
-                    putArg(w, *found);
+                    putArg(w, *found, escape);
                     i = close;
                     continue;
                 }
@@ -272,11 +281,14 @@ std::string_view Localization::get(std::string_view key) const {
 }
 
 size_t Localization::format(std::span<char> out, std::string_view key, std::initializer_list<FormatArg> args) const {
-    return fill(out, get(key), std::span<const FormatArg>(args.begin(), args.size()), nullptr);
+    const std::string_view tmpl = get(key);
+    return fill(out, tmpl, std::span<const FormatArg>(args.begin(), args.size()), nullptr, hasMarkup(tmpl));
 }
 
-size_t Localization::formatArgs(std::span<char> out, std::string_view key, std::span<const FormatArg> args) const {
-    return fill(out, get(key), args, nullptr);
+size_t Localization::formatArgs(std::span<char> out, std::string_view key, std::span<const FormatArg> args,
+                                bool markup) const {
+    const std::string_view tmpl = get(key);
+    return fill(out, tmpl, args, nullptr, markup || hasMarkup(tmpl));
 }
 
 bool KeyArgs::assign(std::initializer_list<FormatArg> args) {
@@ -330,9 +342,9 @@ size_t Localization::plural(std::span<char> out, std::string_view key, i64 count
         return (e.formMask & (1u << u32(c))) ? &e.forms[size_t(c)] : &e.forms[size_t(PluralCategory::Other)];
     };
     const std::span<const FormatArg> list(args.begin(), args.size());
-    if (const std::string* s = pick(impl_->current, impl_->info_.tag)) return fill(out, *s, list, &countArg);
-    if (const std::string* s = pick(impl_->english, "en")) return fill(out, *s, list, &countArg);
-    return fill(out, get(key), list, &countArg);
+    if (const std::string* s = pick(impl_->current, impl_->info_.tag)) return fill(out, *s, list, &countArg, hasMarkup(*s));
+    if (const std::string* s = pick(impl_->english, "en")) return fill(out, *s, list, &countArg, hasMarkup(*s));
+    return fill(out, get(key), list, &countArg, false);
 }
 
 bool Localization::setLanguage(std::string_view lang) {

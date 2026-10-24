@@ -124,8 +124,17 @@ std::optional<FontHandle> TextBackend::loadFont(std::string_view key) {
     }
     size_t at = key.rfind('@');
     f32 size = 0;
-    if (at == std::string_view::npos ||
-        !parseFloat(key.substr(at + 1), size) || size <= 0) {
+    // "!b" / "!i" after the size: synthetic bold / italic.
+    std::string_view sizePart = at == std::string_view::npos ? std::string_view{} : key.substr(at + 1);
+    int style = TTF_STYLE_NORMAL;
+    if (size_t bang = sizePart.find('!'); bang != std::string_view::npos) {
+        for (std::string_view flags = sizePart.substr(bang); flags.size() >= 2 && flags[0] == '!'; flags.remove_prefix(2)) {
+            if (flags[1] == 'b') style |= TTF_STYLE_BOLD;
+            else if (flags[1] == 'i') style |= TTF_STYLE_ITALIC;
+        }
+        sizePart = sizePart.substr(0, bang);
+    }
+    if (at == std::string_view::npos || !parseFloat(sizePart, size) || size <= 0) {
         log::error("Font key '%.*s' must look like 'path@size'", int(key.size()), key.data());
         return std::nullopt;
     }
@@ -135,6 +144,7 @@ std::optional<FontHandle> TextBackend::loadFont(std::string_view key) {
         log::error("Font '%s' failed to load: %s", path.c_str(), SDL_GetError());
         return std::nullopt;
     }
+    TTF_SetFontStyle(font, style);
     FontEntry entry{{}, std::unique_ptr<TTF_Font, FontDeleter>(font), size};
     const LanguageInfo& info = lang_->impl().info();
     if (!lang.empty() && lang == info.tag) {
@@ -151,6 +161,7 @@ std::optional<FontHandle> TextBackend::loadFont(std::string_view key) {
                 continue;
             }
             TTF_SetFontLanguage(fallback, tag.c_str());
+            TTF_SetFontStyle(fallback, style);
             TTF_AddFallbackFont(font, fallback);
             entry.fallbacks.emplace_back(fallback);
         }

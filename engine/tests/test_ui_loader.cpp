@@ -247,3 +247,21 @@ TEST_CASE("Text layout fields parse") {
     CHECK(!c.mirror);
     CHECK(a.mirror);
 }
+
+namespace {
+std::optional<std::string> readRichTheme(std::string_view) {
+    return std::string(R"({ "styles": { "hud": { "font": "fonts/a.ttf", "boldFont": "fonts/a-bold.ttf" } },
+                            "colors": { "gold": "#ffcc00", "ink": "#10203040", "bad": "yellow" } })");
+}
+} // namespace
+
+TEST_CASE("Theme colours and bold fonts parse") {
+    Theme theme = Theme::builtin();
+    LoadResult r = loadTheme("theme.json", readRichTheme, theme);
+    REQUIRE(r.ok);
+    CHECK(*theme.resolve("hud", VisualState::Normal).boldFont == "fonts/a-bold.ttf");
+    CHECK(theme.color("gold") == Color{0xff, 0xcc, 0x00, 0xff});
+    CHECK(theme.color("ink") == Color{0x10, 0x20, 0x30, 0x40});
+    CHECK_FALSE(theme.color("bad").has_value());
+    CHECK(hasError(r, R"(theme.json: colors: "bad" must be a colour like "#rrggbb" or "#rrggbbaa")"));
+}

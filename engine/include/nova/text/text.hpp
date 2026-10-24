@@ -15,6 +15,12 @@ using FontHandle = Handle<FontTag>;
 
 enum class TextAlign : u8 { Left, Center, Right };
 
+// Synthetic styles SDL_ttf applies to a font (rich text [b] and [i]).
+struct FontStyle {
+    bool bold = false;
+    bool italic = false;
+};
+
 // Text drawn at its entity's Transform: horizontally anchored per `align` (which also aligns
 // wrapped lines), vertically centred. Text always draws above the scene's sprites; `layer`
 // orders labels. Changing the string re-lays out the text only when the content actually differs.

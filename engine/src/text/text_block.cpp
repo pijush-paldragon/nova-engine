@@ -1,5 +1,6 @@
 #include "text/text_block.hpp"
 
+#include "text/line_break.hpp"
 #include "text/text_backend.hpp"
 
 #include <nova/core/alloc_stats.hpp>
@@ -14,9 +15,6 @@ namespace nova {
 namespace {
 
 constexpr std::string_view kEllipsis = "…";
-// Kinsoku: characters a line may not start with, and ones it may not end with.
-constexpr std::u32string_view kNoLineStart = U"。、，．・：；？！）」』】〕ー";
-constexpr std::u32string_view kNoLineEnd = U"（「『【〔";
 
 bool isSpace(char c) { return c == ' ' || c == '\t' || c == '\r' || c == '\n'; }
 
@@ -45,7 +43,7 @@ bool TextBlock::set(const TextBlockParams& p) {
     if (p.fonts.empty()) return false;
     if (laidOut_ && fontGeneration_ == backend_->fontGeneration() && p.text == text_ && p.wrapWidth == wrapWidth_ &&
         p.maxLines == maxLines_ && p.lineSpacing == lineSpacing_ && p.fitBox == fitBox_ && p.rtl == rtl_ &&
-        fonts_ == p.fonts) {
+        fonts_ == p.fonts && (p.rich != nullptr) == hadResolver_ && p.richRevision == richRevision_) {
         return true;
     }
     // Reuse capacity: no allocation unless the text or the font list grows.
@@ -56,6 +54,15 @@ bool TextBlock::set(const TextBlockParams& p) {
     lineSpacing_ = p.lineSpacing > 0 ? p.lineSpacing : 1;
     fitBox_ = p.fitBox;
     rtl_ = p.rtl;
+    hadResolver_ = p.rich != nullptr;
+    richRevision_ = p.richRevision;
+    rich_ = p.rich && text_.find('[') != std::string::npos;
+    if (rich_) {
+        lineTexts_.clear();
+        resolveRich(*p.rich);
+    } else {
+        releaseRich();
+    }
     return layout();
 }
 
@@ -74,6 +81,16 @@ bool TextBlock::layout() {
     // Shrink: the largest font whose text fits, else the smallest (then truncated as usual).
     const bool shrink = fitBox_.x > 0 || fitBox_.y > 0;
     const size_t tries = shrink ? fonts_.size() : 1;
+    if (rich_) {
+        for (size_t i = 0; i < tries; ++i) {
+            if (!shapeRich(i)) return false;
+            if (fits()) break;
+        }
+        applyRichEllipsis(fontIndex_);
+        backend_->countRebuild();
+        laidOut_ = true;
+        return true;
+    }
     for (size_t i = 0; i < tries; ++i) {
         shown_.assign(text_);
         if (!shape(i)) return false;
@@ -137,7 +154,7 @@ bool TextBlock::shape(size_t index) {
 bool TextBlock::fits() const {
     const Vec2 s = sizePx_ / backend_->pixelScale();
     return (fitBox_.x <= 0 || s.x <= fitBox_.x + 0.5f) && (fitBox_.y <= 0 || s.y <= fitBox_.y + 0.5f) &&
-           (maxLines_ <= 0 || lines_.size() <= size_t(maxLines_));
+           (maxLines_ <= 0 || lineCount() <= u32(maxLines_));
 }
 
 // Moves a character down a line where a break would leave forbidden punctuation at a line's
@@ -210,7 +227,13 @@ void TextBlock::buildLineTexts() {
 }
 
 void TextBlock::draw(Vec2 topLeft, f32 boxWidth, ui::TextAlignH align, const ScreenFit& fit, Color color, f32 scale) {
-    if (text_.empty() || color.a == 0 || !refresh() || lines_.empty()) return;
+    if (text_.empty() || color.a == 0 || !refresh() || lineCount() == 0) return;
+    if (rich_) {
+        const ui::TextAlignH a = resolveAlign(align, rtl_);
+        const f32 k = a == ui::TextAlignH::Left ? 0 : a == ui::TextAlignH::Center ? 0.5f : 1;
+        drawRich((topLeft - Vec2{fit.visible.x, fit.visible.y}) * fit.scale, boxWidth * fit.scale, k, color, scale);
+        return;
+    }
     const bool multi = lines_.size() > 1;
     if (multi && linesDirty_) buildLineTexts();
     if (!(color == color_)) {
@@ -235,6 +258,298 @@ void TextBlock::draw(Vec2 topLeft, f32 boxWidth, ui::TextAlignH align, const Scr
         const f32 y = origin.y + lineStepPx_ * f32(i) * scale;
         if (scale == 1) TTF_DrawRendererText(t, std::round(x), std::round(y));
         else TTF_DrawRendererText(t, x / scale, y / scale);
+    }
+    if (scale != 1) SDL_SetRenderScale(renderer, 1, 1);
+}
+
+// ---- Rich text ------------------------------------------------------------------------------
+
+void TextBlock::releaseRich() {
+    pieceTexts_.clear(); // frees the text objects
+    pieces_.clear();
+    runs_.clear();
+    richLines_.clear();
+    placed_.clear();
+    richText_.clear();
+    richTextLen_ = 0;
+}
+
+// Parses the markup and resolves every run's fonts (one per shrink step), colour and icon.
+void TextBlock::resolveRich(const RichResolver& resolver) {
+    memory::LoadingScope setup; // changing rich text is setup work: fonts and icons may load
+    std::vector<std::string> errors;
+    parseMarkup(text_, richText_, markup_, &errors);
+    for (const std::string& e : errors) resolver.markupError(e);
+    richTextLen_ = u32(richText_.size());
+    breakOpportunities(richText_, breaks_);
+    runs_.clear();
+    richFonts_.clear();
+    const bool shrink = fitBox_.x > 0 || fitBox_.y > 0;
+    const size_t steps = shrink ? fonts_.size() : 1;
+    TTF_Font* nominal = backend_->ttfFont(fonts_[0]);
+    const f32 nominalSize = nominal ? f32(TTF_GetFontSize(nominal)) : 0;
+    for (const MarkupRun& m : markup_) {
+        RichRun r;
+        r.begin = u32(m.text.data() - richText_.data());
+        r.end = r.begin + u32(m.text.size());
+        if (m.kind == MarkupRun::Kind::Icon) {
+            r.icon = true;
+            r.region = resolver.icon(m.icon);
+            r.iconScale = m.iconScale;
+        } else {
+            r.color = resolver.color(m.style);
+        }
+        r.fontBase = u32(richFonts_.size());
+        for (size_t step = 0; step < steps; ++step) {
+            FontHandle f = fonts_[step];
+            if (!r.icon && !m.style.plain() && nominalSize > 0) {
+                TTF_Font* stepFont = backend_->ttfFont(fonts_[step]);
+                const f32 factor = stepFont ? f32(TTF_GetFontSize(stepFont)) / nominalSize : 1;
+                if (FontHandle styled = resolver.font(m.style, factor); backend_->ttfFont(styled)) f = styled;
+            }
+            richFonts_.push_back(f);
+        }
+        runs_.push_back(r);
+    }
+}
+
+FontHandle TextBlock::pieceFont(size_t i) const {
+    if (i >= pieces_.size()) return {};
+    const RichRun& r = runs_[pieces_[i].run];
+    return richFonts_[r.fontBase + std::min(fontIndex_, richFonts_.size() - r.fontBase - 1)];
+}
+
+// Shapes one text piece with its run's font for a shrink step; icons are sized off the base font.
+bool TextBlock::measurePiece(size_t i, size_t step) {
+    Piece& p = pieces_[i];
+    const RichRun& r = runs_[p.run];
+    TTF_Font* font = backend_->ttfFont(richFonts_[r.fontBase + step]);
+    if (!font) return false;
+    if (p.icon) {
+        const f32 h = f32(TTF_GetFontHeight(font)) * r.iconScale;
+        const f32 aspect = r.region.src.w > 0 && r.region.src.h > 0 ? r.region.src.w / r.region.src.h : 1;
+        p.width = p.advance = h * aspect;
+        p.ascent = h;
+        p.descent = 0;
+        return true;
+    }
+    // The piece draws its visible text; trailing spaces only add to its advance.
+    u32 visible = p.end;
+    while (visible > p.begin && (richText_[visible - 1] == ' ' || richText_[visible - 1] == '\t' ||
+                                 richText_[visible - 1] == '\n' || richText_[visible - 1] == '\r')) {
+        if (richText_[visible - 1] == '\n') p.newline = true;
+        --visible;
+    }
+    const std::string_view text(richText_.data() + p.begin, visible - p.begin);
+    const std::string_view spaces(richText_.data() + visible, p.end - visible);
+    if (pieceTexts_.size() <= i) pieceTexts_.resize(i + 1);
+    if (!pieceTexts_[i]) {
+        pieceTexts_[i] = backend_->createText(font, text);
+        if (!pieceTexts_[i]) return false;
+    } else {
+        TTF_SetTextFont(pieceTexts_[i].get(), font);
+        TTF_SetTextString(pieceTexts_[i].get(), textPtr(text), text.size());
+    }
+    int w = 0, h = 0;
+    if (!text.empty()) TTF_GetTextSize(pieceTexts_[i].get(), &w, &h);
+    int sw = 0;
+    if (!p.newline && !spaces.empty()) TTF_GetStringSize(font, spaces.data(), spaces.size(), &sw, nullptr);
+    p.width = f32(w);
+    p.advance = f32(w + sw);
+    p.ascent = f32(TTF_GetFontAscent(font));
+    p.descent = f32(-TTF_GetFontDescent(font));
+    return true;
+}
+
+bool TextBlock::shapeRich(size_t step) {
+    TTF_Font* base = backend_->ttfFont(fonts_[step]);
+    if (!base) return false;
+    fontIndex_ = step;
+    memory::LoadingScope setup;      // pieces and their text objects (re-made only when text or size changes)
+    memory::DriverAllocScope driver; // SDL_ttf layout
+    richText_.resize(richTextLen_);  // drop an earlier ellipsis
+    pieces_.clear();
+    for (u32 ri = 0; ri < runs_.size(); ++ri) {
+        const RichRun& r = runs_[ri];
+        if (r.icon) {
+            Piece p;
+            p.run = ri;
+            p.icon = true;
+            p.breakBefore = true;
+            pieces_.push_back(p);
+            continue;
+        }
+        // Split the run at break opportunities; a piece that doesn't start at one (a style change
+        // inside a word) stays on the line of the piece before it.
+        for (u32 pos = r.begin; pos < r.end;) {
+            auto next = std::upper_bound(breaks_.begin(), breaks_.end(), pos);
+            const u32 end = next != breaks_.end() && *next < r.end ? *next : r.end;
+            Piece p;
+            p.run = ri;
+            p.begin = pos;
+            p.end = end;
+            p.breakBefore = pos == 0 || std::binary_search(breaks_.begin(), breaks_.end(), pos) ||
+                            (!pieces_.empty() && pieces_.back().icon);
+            pieces_.push_back(p);
+            pos = end;
+        }
+    }
+    if (pieceTexts_.size() > pieces_.size() + 1) pieceTexts_.resize(pieces_.size() + 1); // +1: an ellipsis
+    for (size_t i = 0; i < pieces_.size(); ++i) {
+        if (!measurePiece(i, step)) return false;
+    }
+    placeRichLines(f32(TTF_GetFontAscent(base)), f32(-TTF_GetFontDescent(base)), f32(TTF_GetFontHeight(base)),
+                   f32(TTF_GetFontLineSkip(base)));
+    return true;
+}
+
+// Greedy line filling over words (a run of pieces with no break opportunity between them).
+void TextBlock::placeRichLines(f32 baseAscent, f32 baseDescent, f32 baseHeight, f32 baseSkip) {
+    const f32 wrapPx = wrapWidth_ > 0 ? wrapWidth_ * backend_->pixelScale() : 0;
+    richLines_.clear();
+    RichLine line;
+    f32 x = 0;
+    auto finish = [&] {
+        line.ascent = baseAscent;
+        line.descent = baseDescent;
+        line.width = 0;
+        for (u32 k = line.first; k < line.first + line.count; ++k) {
+            line.ascent = std::max(line.ascent, pieces_[k].ascent);
+            line.descent = std::max(line.descent, pieces_[k].descent);
+            line.width = std::max(line.width, pieces_[k].x + pieces_[k].width);
+        }
+        richLines_.push_back(line);
+        line = RichLine{};
+        x = 0;
+    };
+    for (size_t i = 0; i < pieces_.size();) {
+        size_t j = i + 1;
+        while (j < pieces_.size() && !pieces_[j].breakBefore) ++j;
+        f32 fit = 0;
+        for (size_t k = i; k < j; ++k) fit += k + 1 < j ? pieces_[k].advance : pieces_[k].width;
+        if (wrapPx > 0 && line.count > 0 && x + fit > wrapPx + 0.5f) {
+            finish();
+            line.first = u32(i);
+        }
+        if (line.count == 0) line.first = u32(i);
+        for (size_t k = i; k < j; ++k) {
+            pieces_[k].x = x;
+            pieces_[k].line = u32(richLines_.size());
+            x += pieces_[k].advance;
+            ++line.count;
+        }
+        if (pieces_[j - 1].newline) {
+            finish();
+            line.first = u32(j);
+        }
+        i = j;
+    }
+    if (line.count > 0 || richLines_.empty()) finish();
+    stackRichLines(baseHeight, baseSkip);
+}
+
+// Vertical placement: each line as tall as its tallest piece (at least the base font's line).
+void TextBlock::stackRichLines(f32 baseHeight, f32 baseSkip) {
+    f32 y = 0, widest = 0, bottom = 0;
+    for (RichLine& l : richLines_) {
+        l.y = y;
+        bottom = y + std::max(baseHeight, l.ascent + l.descent);
+        y += std::max(baseSkip, l.ascent + l.descent) * lineSpacing_;
+        widest = std::max(widest, l.width);
+    }
+    lineStepPx_ = baseSkip * lineSpacing_;
+    sizePx_ = {widest, bottom};
+}
+
+// Keeps maxLines lines and ends the last with "…", dropping trailing pieces until it fits.
+void TextBlock::applyRichEllipsis(size_t step) {
+    if (maxLines_ <= 0 || richLines_.size() <= size_t(maxLines_)) return;
+    TTF_Font* base = backend_->ttfFont(fonts_[step]);
+    if (!base) return;
+    memory::LoadingScope setup;
+    memory::DriverAllocScope driver;
+    RichLine& last = richLines_[size_t(maxLines_ - 1)];
+    pieces_.resize(last.first + last.count);
+    richLines_.resize(size_t(maxLines_));
+    // The ellipsis takes the look of the last text on the line (else of the first text run).
+    u32 run = u32(runs_.size());
+    for (size_t k = pieces_.size(); k-- > last.first && run == runs_.size();) {
+        if (!pieces_[k].icon) run = pieces_[k].run;
+    }
+    for (u32 ri = 0; ri < runs_.size() && run == runs_.size(); ++ri) {
+        if (!runs_[ri].icon) run = ri;
+    }
+    if (run == runs_.size()) return;
+    Piece dots;
+    dots.run = run;
+    dots.begin = u32(richText_.size());
+    richText_.append(kEllipsis);
+    dots.end = u32(richText_.size());
+    dots.line = u32(maxLines_ - 1);
+    pieces_.push_back(dots);
+    if (!measurePiece(pieces_.size() - 1, step)) {
+        pieces_.pop_back();
+        return;
+    }
+    const f32 dotsWidth = pieces_.back().width;
+    const f32 wrapPx = wrapWidth_ > 0 ? wrapWidth_ * backend_->pixelScale() : 0;
+    // Drop the line's trailing pieces (and their text objects, which pair with pieces by index)
+    // until the ellipsis fits after them.
+    while (last.count > 0 && wrapPx > 0) {
+        const size_t tail = last.first + last.count - 1;
+        if (pieces_[tail].x + pieces_[tail].width + dotsWidth <= wrapPx + 0.5f) break;
+        pieces_.erase(pieces_.begin() + long(tail));
+        pieceTexts_.erase(pieceTexts_.begin() + long(tail));
+        --last.count;
+    }
+    Piece& d = pieces_.back();
+    d.x = last.count > 0 ? pieces_[last.first + last.count - 1].x + pieces_[last.first + last.count - 1].width : 0;
+    ++last.count;
+    last.width = d.x + d.width;
+    last.ascent = std::max(last.ascent, d.ascent);
+    last.descent = std::max(last.descent, d.descent);
+    stackRichLines(f32(TTF_GetFontHeight(base)), f32(TTF_GetFontLineSkip(base)));
+}
+
+std::span<const PlacedIcon> TextBlock::icons(f32 boxWidth, ui::TextAlignH align) {
+    placed_.clear();
+    if (!rich_ || !refresh()) return {};
+    const f32 ps = backend_->pixelScale();
+    const ui::TextAlignH a = resolveAlign(align, rtl_);
+    const f32 k = a == ui::TextAlignH::Left ? 0 : a == ui::TextAlignH::Center ? 0.5f : 1;
+    for (const Piece& p : pieces_) {
+        if (!p.icon) continue;
+        const RichLine& line = richLines_[p.line];
+        const f32 xIn = rtl_ ? line.width - p.x - p.width : p.x;
+        const f32 x = (boxWidth * ps - line.width) * k + xIn;
+        const f32 y = line.y + line.ascent - p.ascent;
+        placed_.push_back({runs_[p.run].region, {x / ps, y / ps, p.width / ps, p.ascent / ps}});
+    }
+    return placed_;
+}
+
+void TextBlock::drawRich(Vec2 origin, f32 boxPx, f32 k, Color color, f32 scale) {
+    if (!(color == color_)) {
+        for (size_t i = 0; i < pieces_.size(); ++i) {
+            if (pieces_[i].icon || i >= pieceTexts_.size() || !pieceTexts_[i]) continue;
+            Color c = runs_[pieces_[i].run].color.value_or(color);
+            if (runs_[pieces_[i].run].color) c.a = u8((u32(c.a) * u32(color.a) + 127) / 255);
+            TTF_SetTextColor(pieceTexts_[i].get(), c.r, c.g, c.b, c.a);
+        }
+        color_ = color;
+    }
+    SDL_Renderer* renderer = backend_->renderer();
+    memory::DriverAllocScope driver;
+    if (scale != 1) SDL_SetRenderScale(renderer, scale, scale);
+    for (size_t i = 0; i < pieces_.size(); ++i) {
+        const Piece& p = pieces_[i];
+        if (p.icon || p.width <= 0 || i >= pieceTexts_.size() || !pieceTexts_[i]) continue;
+        const RichLine& line = richLines_[p.line];
+        const f32 xIn = rtl_ ? line.width - p.x - p.width : p.x;
+        const f32 x = origin.x + ((boxPx - line.width) * k + xIn) * scale;
+        const f32 y = origin.y + (line.y + line.ascent - p.ascent) * scale;
+        if (scale == 1) TTF_DrawRendererText(pieceTexts_[i].get(), std::round(x), std::round(y));
+        else TTF_DrawRendererText(pieceTexts_[i].get(), x / scale, y / scale);
     }
     if (scale != 1) SDL_SetRenderScale(renderer, 1, 1);
 }

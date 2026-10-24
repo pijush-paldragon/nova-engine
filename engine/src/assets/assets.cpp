@@ -44,11 +44,15 @@ void Assets::setFontLoader(FontLoader loadFont, FontUnloader unloadFont) {
     fonts_.emplace(std::move(loadFont), [unloadFont](FontHandle& h) { unloadFont(h); });
 }
 
-FontHandle Assets::font(std::string_view path, f32 sizePx, ScopeId scope) {
+FontHandle Assets::font(std::string_view path, f32 sizePx, ScopeId scope) { return font(path, sizePx, FontStyle{}, scope); }
+
+FontHandle Assets::font(std::string_view path, f32 sizePx, FontStyle style, ScopeId scope) {
     if (!fonts_) return {};
     std::string key(path);
     key += '@';
     key += std::to_string(int(sizePx + 0.5f));
+    if (style.bold) key += "!b";
+    if (style.italic) key += "!i";
     if (lang_ && !lang_->language().empty()) {
         key += '#';
         key += lang_->language();

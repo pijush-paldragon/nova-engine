@@ -51,9 +51,13 @@ public:
     // The translation; falls back to English, then to "[key]" (logged once in dev builds).
     std::string_view get(std::string_view key) const;
     // Writes the translation with {placeholders} filled into `out` (always NUL-terminated,
-    // truncated to fit) and returns its length. Never allocates.
+    // truncated to fit) and returns its length. Never allocates. When the translation contains
+    // rich-text markup, "[" in text values is doubled so a value (a player's name) shows literally.
     size_t format(std::span<char> out, std::string_view key, std::initializer_list<FormatArg> args = {}) const;
-    size_t formatArgs(std::span<char> out, std::string_view key, std::span<const FormatArg> args) const;
+    // As format; `markup` escapes values even when the translation has no markup (the result
+    // will be read as rich text, as UI labels do).
+    size_t formatArgs(std::span<char> out, std::string_view key, std::span<const FormatArg> args,
+                      bool markup = false) const;
     // Picks the plural form for `count` (CLDR rules for the language) and formats it; {count} is
     // filled in automatically.
     size_t plural(std::span<char> out, std::string_view key, i64 count, std::initializer_list<FormatArg> args = {}) const;

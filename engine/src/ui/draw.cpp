@@ -148,15 +148,60 @@ void renderText(Canvas::Impl& impl, Element& e) {
     char buf[1024];
     std::array<FormatArg, KeyArgs::kMax> args;
     const size_t n = e.keyArgs.view(args);
-    const size_t len = lang.formatArgs(buf, std::string_view(raw).substr(1), std::span<const FormatArg>(args.data(), n));
+    // UI labels read their text as rich text, so values are escaped: they can't add tags.
+    const size_t len =
+        lang.formatArgs(buf, std::string_view(raw).substr(1), std::span<const FormatArg>(args.data(), n), true);
     e.rendered.assign(buf, len);
     e.langGen = lang.generation();
     e.keyDirty = false;
 }
 
+// Rich text's fonts, colours and icons from the theme and assets, relative to the element's style.
+class UiRich final : public RichResolver {
+public:
+    UiRich(const Canvas::Impl& impl, const Style& base) : impl_(impl), base_(base) {}
+
+    FontHandle font(const RunStyle& rs, f32 sizeFactor) const override {
+        Assets* assets = impl_.services->assets;
+        if (!assets) return {};
+        const Style& s = rs.styleName.empty() ? base_ : impl_.services->ui->theme.resolve(rs.styleName, VisualState::Normal);
+        // [b] uses the style's boldFont when it has one, else SDL_ttf's synthetic bold.
+        const bool boldFile = rs.bold && !s.boldFont->empty();
+        const std::string& path = boldFile ? *s.boldFont : *s.font;
+        if (path.empty()) return {};
+        return assets->font(path, *s.fontSize * rs.sizeScale * sizeFactor, FontStyle{rs.bold && !boldFile, rs.italic},
+                            impl_.scope);
+    }
+    std::optional<Color> color(const RunStyle& rs) const override {
+        if (rs.color) return rs.color;
+        const Theme& theme = impl_.services->ui->theme;
+        if (!rs.colorName.empty()) {
+            if (std::optional<Color> c = theme.color(rs.colorName)) return c;
+            logOnceFor(LogKey::UnknownColor, rs.colorName, [&] {
+                return "ui: unknown colour \"" + std::string(rs.colorName) + "\" (add it to theme.json \"colors\")";
+            });
+            return std::nullopt;
+        }
+        if (!rs.styleName.empty()) return *theme.resolve(rs.styleName, VisualState::Normal).textColor;
+        return std::nullopt;
+    }
+    SpriteRegion icon(std::string_view name) const override {
+        return impl_.services->assets ? resolveSprite(*impl_.services->assets, name, impl_.scope) : SpriteRegion{};
+    }
+    void markupError(const std::string& message) const override { logOnce("ui: " + message); }
+
+private:
+    const Canvas::Impl& impl_;
+    const Style& base_;
+};
+
 // Hands the element's text and its wrap/shrink box to its TextBlock (a no-op when unchanged).
 bool syncText(const Canvas::Impl& impl, Element& e) {
+    const UiShared& shared = *impl.services->ui;
+    const UiRich rich(impl, shared.theme.resolve(styleNameOf(e), VisualState::Normal));
     TextBlockParams p;
+    p.rich = &rich;
+    p.richRevision = shared.theme.generation();
     p.fonts = e.fonts;
     p.text = e.rendered;
     p.wrapWidth = e.spec.wrap ? e.textBox.x : 0;
@@ -484,6 +529,15 @@ void buildLayer(Canvas::Impl& impl, u16 layer, DrawLayer& out, std::vector<Frame
             const Rect box{textArea.x, textArea.y + (textArea.h - size.y) * 0.5f, textArea.w, size.y};
             out.texts.push_back({e.text.get(), box, xf.apply({box.x, box.y}), xf.s,
                                  modulate(*style.textColor, Color::White, opacity), align});
+            // Rich text's inline icons draw in this layer's sprite pass, under its text.
+            for (const PlacedIcon& icon : e.text->icons(box.w, align)) {
+                const SpriteRegion& r = icon.region;
+                if (!r.texture.valid()) continue;
+                const Vec2 natural = regionSize(impl, r);
+                const Rect src = r.src.w > 0 ? r.src : Rect{0, 0, natural.x, natural.y};
+                em.quad(r.texture, src, {box.x + icon.box.x, box.y + icon.box.y, icon.box.w, icon.box.h},
+                        modulate(Color::White, Color::White, opacity), xf);
+            }
         }
 
         // Children in order: push in reverse so the first child is drawn first.

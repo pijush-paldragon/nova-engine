@@ -66,6 +66,7 @@ struct Style {
     Prop<f32> scale = 1.f;
     Prop<Insets> padding;
     Prop<std::string> font;
+    Prop<std::string> boldFont; // rich text [b]; unset = synthetic bold of `font`
     Prop<f32> fontSize = 32.f;
     Prop<Color> textColor = Color::White;
     Prop<std::string> clickSound;
@@ -91,6 +92,10 @@ public:
     // Bumped by every set(), so elements know to re-resolve fonts and sprites.
     u32 generation() const { return generation_; }
 
+    // Named colours for rich text ([color=gold]), from theme.json's "colors".
+    void setColor(std::string name, Color color);
+    std::optional<Color> color(std::string_view name) const;
+
     // default, button, primary, secondary, danger, panel, hud, toggle, slider, progress.
     static Theme builtin();
 
@@ -103,6 +108,7 @@ private:
     const Style& resolveRaw(std::string_view name, int depth) const;
 
     std::unordered_map<std::string, Entry, IdHashSv, std::equal_to<>> entries_;
+    std::unordered_map<std::string, Color, IdHashSv, std::equal_to<>> colors_;
     mutable Style merged_; // scratch for extends chains
     u32 generation_ = 1;
 };
@@ -112,7 +118,7 @@ void logOnce(const std::string& message);
 
 // Logs a message once per (kind, name); the message is only built the first time, so a lookup
 // repeated every frame (a typo'd style) costs a set lookup, never an allocation.
-enum class LogKey : u8 { UnknownStyle, NoFont, BadSprite, StyleExtends, Count };
+enum class LogKey : u8 { UnknownStyle, NoFont, BadSprite, StyleExtends, UnknownColor, Count };
 bool firstReport(LogKey key, std::string_view name);
 template <class F>
 void logOnceFor(LogKey key, std::string_view name, F&& makeMessage) {

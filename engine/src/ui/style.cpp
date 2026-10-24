@@ -23,6 +23,7 @@ Style mergeOnto(const Style& base, const Style& over) {
     take(s.scale, over.scale);
     take(s.padding, over.padding);
     take(s.font, over.font);
+    take(s.boldFont, over.boldFont);
     take(s.fontSize, over.fontSize);
     take(s.textColor, over.textColor);
     take(s.clickSound, over.clickSound);
@@ -76,6 +77,16 @@ void Theme::patch(const std::string& name, const Style& style) {
     Style merged = mergeOnto(it->second.raw, style);
     merged.extends = style.extends.empty() ? it->second.raw.extends : style.extends;
     set(name, std::move(merged));
+}
+
+void Theme::setColor(std::string name, Color color) {
+    colors_[std::move(name)] = color;
+    ++generation_;
+}
+
+std::optional<Color> Theme::color(std::string_view name) const {
+    auto it = colors_.find(name);
+    return it == colors_.end() ? std::nullopt : std::optional<Color>(it->second);
 }
 
 void Theme::set(std::string name, Style style) {

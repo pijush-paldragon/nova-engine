@@ -1,7 +1,10 @@
 #pragma once
 
+#include "text/markup.hpp"
+
 #include <nova/core/math.hpp>
 #include <nova/render/camera.hpp>
+#include <nova/render/types.hpp>
 #include <nova/text/text.hpp>
 #include <nova/ui/types.hpp>
 
@@ -29,6 +32,26 @@ constexpr ui::TextAlignH resolveAlign(ui::TextAlignH align, bool rtl) {
     return align;
 }
 
+// Fonts, colours and icons for rich text; the UI implements it from the theme and assets.
+class RichResolver {
+public:
+    // The font for a styled run; `sizeFactor` is the shrink step's size over the nominal size.
+    virtual FontHandle font(const RunStyle& style, f32 sizeFactor) const = 0;
+    // The run's colour; nullopt = the colour given to draw().
+    virtual std::optional<Color> color(const RunStyle& style) const = 0;
+    virtual SpriteRegion icon(std::string_view name) const = 0;
+    virtual void markupError(const std::string& message) const = 0;
+
+protected:
+    ~RichResolver() = default;
+};
+
+// An inline icon of rich text: `box` is in design units from the block's top-left.
+struct PlacedIcon {
+    SpriteRegion region;
+    Rect box;
+};
+
 struct TextBlockParams {
     // [0] is the nominal size; with a fitBox, further entries are the shrink steps, largest first.
     std::span<const FontHandle> fonts;
@@ -37,12 +60,17 @@ struct TextBlockParams {
     i32 maxLines = 0;     // 0 = no limit; overflow ends with "…"
     f32 lineSpacing = 1;
     Vec2 fitBox{};        // non-zero: pick the largest font whose text fits (0 on an axis = unbounded)
-    bool rtl = false;     // paragraph direction, for Start/End alignment
+    bool rtl = false;     // paragraph direction: Start/End alignment, rich runs' order
+    // Non-null: text containing "[" is parsed as markup. Used during set() only. Bump
+    // richRevision when what it resolves to changes (a new theme).
+    const RichResolver* rich = nullptr;
+    u32 richRevision = 0;
 };
 
-// A paragraph of plain text: wrapped, truncated to maxLines, shrunk to fit and aligned per line.
+// A paragraph of text: wrapped, truncated to maxLines, shrunk to fit and aligned per line. Plain
+// text is shaped as one SDL_ttf text; rich text as one per word piece, with inline icons.
 // Re-lays out only when an input, a font or the pixel scale changed; drawing and unchanged
-// set() calls never allocate.
+// set() calls never allocate (changing rich text is setup work: it re-parses).
 class TextBlock {
 public:
     explicit TextBlock(TextBackend& backend) : backend_(&backend) {}
@@ -53,12 +81,19 @@ public:
     bool set(const TextBlockParams& p);
     // Size in design units ({0, 0} for empty text).
     Vec2 size();
-    u32 lineCount() const { return u32(lines_.size()); }
+    u32 lineCount() const { return u32(rich_ ? richLines_.size() : lines_.size()); }
     size_t fontIndex() const { return fontIndex_; }
     bool empty() const { return text_.empty(); }
-    // The text as laid out (with any inserted line breaks and the ellipsis), and one line of it.
-    std::string_view shownText() const { return shown_; }
+    bool rich() const { return rich_; }
+    // The text as laid out (plain: with inserted line breaks and the ellipsis; rich: the visible
+    // text without tags), and one line of plain text.
+    std::string_view shownText() const { return rich_ ? std::string_view(richText_) : std::string_view(shown_); }
     std::string_view lineText(u32 line) const;
+    // Rich text's icons as placed by a draw with this box width and alignment; empty for plain text.
+    std::span<const PlacedIcon> icons(f32 boxWidth, ui::TextAlignH align);
+    // Rich text pieces (tests): the font each word piece is shaped with.
+    size_t pieceCount() const { return pieces_.size(); }
+    FontHandle pieceFont(size_t i) const;
 
     // Draws with its top-left at `topLeft` (design units), each line aligned within `boxWidth`,
     // scaled about `topLeft`.
@@ -100,7 +135,35 @@ private:
         size_t n_ = 0;
     };
 
+    struct RichRun {
+        u32 begin = 0, end = 0; // bytes of richText_
+        bool icon = false;
+        SpriteRegion region;
+        f32 iconScale = 1;
+        std::optional<Color> color;
+        u32 fontBase = 0;       // richFonts_[fontBase + shrink step]
+    };
+    struct Piece {
+        u32 run = 0;
+        u32 begin = 0, end = 0;  // visible bytes (trailing spaces and newline excluded)
+        f32 width = 0, advance = 0, ascent = 0, descent = 0, x = 0; // pixels
+        u32 line = 0;
+        bool breakBefore = false, newline = false, icon = false;
+    };
+    struct RichLine {
+        f32 width = 0, ascent = 0, descent = 0, y = 0; // pixels
+        u32 first = 0, count = 0;
+    };
+
     bool layout();
+    void resolveRich(const RichResolver& resolver);
+    bool shapeRich(size_t fontIndex);
+    bool measurePiece(size_t i, size_t fontIndex);
+    void placeRichLines(f32 baseAscent, f32 baseDescent, f32 baseHeight, f32 baseSkip);
+    void stackRichLines(f32 baseHeight, f32 baseSkip);
+    void applyRichEllipsis(size_t fontIndex);
+    void drawRich(Vec2 origin, f32 boxPx, f32 k, Color color, f32 scale);
+    void releaseRich();
     bool shape(size_t fontIndex);   // lays out shown_ with one font; fills lines_
     bool fits() const;
     void applyKinsoku();
@@ -125,6 +188,21 @@ private:
     Color color_{0, 0, 0, 0};
     bool linesDirty_ = true;        // lineTexts_ must be rebuilt from lines_
     bool laidOut_ = false;
+
+    // Rich text.
+    bool rich_ = false;
+    bool hadResolver_ = false;
+    u32 richRevision_ = 0;
+    std::string richText_;          // visible text (then "…" when truncated)
+    u32 richTextLen_ = 0;           // richText_ length before any ellipsis
+    std::vector<MarkupRun> markup_;
+    std::vector<RichRun> runs_;
+    std::vector<FontHandle> richFonts_;
+    std::vector<u32> breaks_;
+    std::vector<Piece> pieces_;
+    std::vector<TtfTextPtr> pieceTexts_; // pieceTexts_[i] draws pieces_[i] (none for icons)
+    std::vector<RichLine> richLines_;
+    std::vector<PlacedIcon> placed_;
 };
 
 } // namespace nova
