@@ -147,3 +147,19 @@ TEST_CASE("Editing the language file reloads it") {
     detail::setDevAssetSourceDir("");
     fs::remove_all(dir);
 }
+
+TEST_CASE("Keyed plurals pick their form from count") {
+    TextFixture fx;
+    char buf[64];
+    const FormatArg one[] = {{"count", i64(1)}};
+    const FormatArg three[] = {{"count", i64(3)}};
+    CHECK(std::string_view(buf, fx.text->lang().formatArgs(buf, "hud.lives", one)) == "1 life");
+    CHECK(std::string_view(buf, fx.text->lang().formatArgs(buf, "hud.lives", three)) == "3 lives");
+    auto lives = fx.canvas.root().add<Label>({.text = "x"});
+    lives.setKey("hud.lives", {{"count", i64(1)}});
+    fx.frame();
+    CHECK(fx.shown(lives) == "1 life");
+    lives.setKey("hud.lives", {{"count", i64(2)}});
+    fx.frame();
+    CHECK(fx.shown(lives) == "2 lives");
+}

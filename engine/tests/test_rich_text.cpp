@@ -244,3 +244,96 @@ TEST_CASE("Rich runs draw in their colour") {
     CHECK(red > 20);
     CHECK(white > 20);
 }
+
+namespace {
+struct GameTextFixture : UiFixture {
+    FontHandle font;
+    GameTextFixture(const char* lang) {
+        assets->setLocalization(&text->lang()); // Brick Breaker's text/<lang>.json and fonts
+        REQUIRE(text->lang().setLanguage(lang));
+        font = assets->font("fonts/Fredoka.ttf", 40);
+    }
+    TextBlockParams params(std::string_view s) {
+        TextBlockParams p;
+        p.fonts = std::span<const FontHandle>(&font, 1);
+        p.text = s;
+        p.rtl = text->lang().rightToLeft();
+        return p;
+    }
+};
+} // namespace
+
+TEST_CASE("Fallback glyphs share the primary font's baseline") {
+    GameTextFixture fx("en");
+    TextBlock block(*fx.text);
+    REQUIRE(block.set(fx.params("Aا"))); // Fredoka "A", then alef from the Arabic fallback
+    REQUIRE(block.rich());
+    REQUIRE(block.pieceCount() == 2);
+    const ScreenFit& fit = fx.renderer->fit();
+    fx.renderer->beginFrame();
+    block.draw({fit.visible.x + 40, fit.visible.y + 40}, 400, TextAlignH::Left, fit, Color::White, 1);
+    SDL_Surface* shot = SDL_RenderReadPixels(fx.renderer->sdl(), nullptr);
+    REQUIRE(shot);
+    SDL_Surface* rgba = SDL_ConvertSurface(shot, SDL_PIXELFORMAT_RGBA32);
+    SDL_DestroySurface(shot);
+    REQUIRE(rgba);
+    // Bottom ink row of each glyph (columns split at the gap between them).
+    std::vector<int> bottom(size_t(rgba->w), -1);
+    for (int y = 0; y < rgba->h; ++y) {
+        const u8* row = static_cast<const u8*>(rgba->pixels) + size_t(y) * size_t(rgba->pitch);
+        for (int x = 0; x < rgba->w; ++x) {
+            if (row[x * 4] > 128) bottom[size_t(x)] = y;
+        }
+    }
+    SDL_DestroySurface(rgba);
+    fx.renderer->endFrame();
+    std::vector<int> glyphBottoms;
+    for (int x = 0; x < int(bottom.size());) {
+        if (bottom[size_t(x)] < 0) {
+            ++x;
+            continue;
+        }
+        int b = -1;
+        for (; x < int(bottom.size()) && bottom[size_t(x)] >= 0; ++x) b = std::max(b, bottom[size_t(x)]);
+        glyphBottoms.push_back(b);
+    }
+    REQUIRE(glyphBottoms.size() == 2);
+    CHECK(std::abs(glyphBottoms[0] - glyphBottoms[1]) <= 1);
+}
+
+TEST_CASE("Right-to-left lines keep numbers in order") {
+    GameTextFixture fx("ar");
+    TextBlock block(*fx.text);
+    REQUIRE(block.set(fx.params("النقاط 20")));
+    REQUIRE(block.rich());
+    REQUIRE(block.pieceCount() == 2);
+    CHECK(block.pieceText(1) == "20"); // shaped alone: its digits stay left to right
+    const f32 w = block.size().x;
+    const Rect word = block.pieceBox(0, w, TextAlignH::Start);
+    const Rect number = block.pieceBox(1, w, TextAlignH::Start);
+    CHECK(number.x < word.x);                                   // the number is left of the word
+    CHECK(word.x + word.w == doctest::Approx(w).epsilon(0.01)); // the first word starts at the right
+    CHECK(number.y + number.h > 0);
+}
+
+TEST_CASE("Left-to-right runs keep their order in right-to-left lines") {
+    GameTextFixture fx("ar");
+    TextBlock block(*fx.text);
+    REQUIRE(block.set(fx.params("日本語")));
+    REQUIRE(block.pieceCount() == 3); // CJK breaks between characters
+    f32 w = block.size().x;
+    CHECK(block.pieceBox(0, w, TextAlignH::Start).x < block.pieceBox(1, w, TextAlignH::Start).x);
+    CHECK(block.pieceBox(1, w, TextAlignH::Start).x < block.pieceBox(2, w, TextAlignH::Start).x);
+
+    REQUIRE(block.set(fx.params("العب Brick Breaker 2")));
+    REQUIRE(block.pieceCount() == 4);
+    w = block.size().x;
+    const Rect arabic = block.pieceBox(0, w, TextAlignH::Start);
+    const Rect brick = block.pieceBox(1, w, TextAlignH::Start);
+    const Rect breaker = block.pieceBox(2, w, TextAlignH::Start);
+    const Rect two = block.pieceBox(3, w, TextAlignH::Start);
+    CHECK(arabic.x + arabic.w == doctest::Approx(w).epsilon(0.01)); // Arabic first, on the right
+    CHECK(brick.x < breaker.x);                                       // "Brick Breaker 2" reads left to right
+    CHECK(breaker.x < two.x);
+    CHECK(two.x + two.w < arabic.x);
+}

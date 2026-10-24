@@ -14,6 +14,15 @@ HAS_FONTTOOLS = importlib.util.find_spec("fontTools") is not None
 
 
 class FetchFontsTests(unittest.TestCase):
+    def test_strings_in_skips_language_list(self):
+        spec = importlib.util.spec_from_file_location("fetch_fonts", TOOL)
+        tool = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(tool)
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / "languages.json").write_text('["en", "ja"]', encoding="utf-8")
+            (Path(tmp) / "ja.json").write_text('{\n // c\n "strings": {"a": {"b": "日本"}},\n}', encoding="utf-8")
+            self.assertEqual(tool.strings_in(tmp), "日本")
+
     def test_missing_fonttools_message(self):
         # Simulate a Python without fontTools by blocking the import.
         code = ("import sys, runpy; sys.modules['fontTools'] = None; "

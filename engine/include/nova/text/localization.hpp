@@ -55,7 +55,8 @@ public:
     // rich-text markup, "[" in text values is doubled so a value (a player's name) shows literally.
     size_t format(std::span<char> out, std::string_view key, std::initializer_list<FormatArg> args = {}) const;
     // As format; `markup` escapes values even when the translation has no markup (the result
-    // will be read as rich text, as UI labels do).
+    // will be read as rich text, as UI labels do). A plural entry given an integer "count"
+    // argument picks its plural form (so setKey("hud.lives", {{"count", n}}) works).
     size_t formatArgs(std::span<char> out, std::string_view key, std::span<const FormatArg> args,
                       bool markup = false) const;
     // Picks the plural form for `count` (CLDR rules for the language) and formats it; {count} is
@@ -77,6 +78,8 @@ public:
     const Impl& impl() const { return *impl_; }
 
 private:
+    // The plural form for `count` in the current language, else English; null if not plural.
+    const std::string* pluralForm(std::string_view key, i64 count) const;
     std::unique_ptr<Impl> impl_;
 };
 

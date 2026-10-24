@@ -1,6 +1,7 @@
 #include "text/text_backend.hpp"
 
 #include "core/parse.hpp"
+#include "text/font_runs.hpp"
 #include "text/localization_impl.hpp"
 #include "platform/asset_io.hpp"
 
@@ -14,6 +15,7 @@
 #include <SDL3_ttf/SDL_ttf.h>
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <vector>
 
@@ -83,9 +85,21 @@ Text::~Text() = default;
 Vec2 Text::measure(FontHandle font, std::string_view s) const {
     const FontEntry* f = impl_->fonts.get(font);
     if (!f) return {};
-    int w = 0, h = 0;
-    TTF_GetStringSize(f->font.get(), s.data(), s.size(), &w, &h);
-    return Vec2{f32(w), f32(h)} / pixelScale_;
+    std::array<TTF_Font*, 8> chain{};
+    size_t n = 0;
+    chain[n++] = f->font.get();
+    for (const auto& fallback : f->fallbacks) {
+        if (n < chain.size()) chain[n++] = fallback.get();
+    }
+    // One line: the font runs side by side, as tall as the tallest.
+    int width = 0, height = 0;
+    forEachFontRun(std::span<TTF_Font* const>(chain.data(), n), s, [&](size_t b, size_t e, TTF_Font* run) {
+        int w = 0, h = 0;
+        TTF_GetStringSize(run, s.data() + b, e - b, &w, &h);
+        width += w;
+        height = std::max(height, h);
+    });
+    return Vec2{f32(width), f32(height)} / pixelScale_;
 }
 
 Result<std::unique_ptr<TextBackend>> TextBackend::create(SDL_Renderer* renderer) {
@@ -150,7 +164,8 @@ std::optional<FontHandle> TextBackend::loadFont(std::string_view key) {
     if (!lang.empty() && lang == info.tag) {
         // Direction and script are left to HarfBuzz per text: forcing RTL on a font would also
         // reverse Latin text ("Score 10") shown in an Arabic UI. The language tag picks local
-        // letter forms.
+        // letter forms. Fallbacks are kept as the font's chain, not attached in SDL_ttf: TextBlock
+        // draws each run with one font and aligns baselines (see font_runs.hpp).
         std::string tag(lang);
         TTF_SetFontLanguage(font, tag.c_str());
         for (const std::string& fallbackPath : info.fonts) {
@@ -162,7 +177,6 @@ std::optional<FontHandle> TextBackend::loadFont(std::string_view key) {
             }
             TTF_SetFontLanguage(fallback, tag.c_str());
             TTF_SetFontStyle(fallback, style);
-            TTF_AddFallbackFont(font, fallback);
             entry.fallbacks.emplace_back(fallback);
         }
     }
@@ -172,6 +186,18 @@ std::optional<FontHandle> TextBackend::loadFont(std::string_view key) {
 TTF_Font* TextBackend::ttfFont(FontHandle font) const {
     const FontEntry* f = impl_->fonts.get(font);
     return f ? f->font.get() : nullptr;
+}
+
+std::span<TTF_Font* const> TextBackend::fontChain(FontHandle font, std::span<TTF_Font*> buf) const {
+    const FontEntry* f = impl_->fonts.get(font);
+    if (!f || buf.empty()) return {};
+    size_t n = 0;
+    buf[n++] = f->font.get();
+    for (const auto& fallback : f->fallbacks) {
+        if (n == buf.size()) break;
+        buf[n++] = fallback.get();
+    }
+    return buf.first(n);
 }
 
 void TextBackend::unloadFont(FontHandle font) {

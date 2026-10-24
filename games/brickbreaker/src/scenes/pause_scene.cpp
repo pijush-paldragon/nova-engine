@@ -12,7 +12,7 @@ void PauseScene::onEnter() {
         if (!quitting_) scenes().pop();
     });
     ui().onClick("resume", [this] { menu_.close(); });
-    ui().onClick("settings", [this] { openSettings(ui(), audio(), save()); });
+    ui().onClick("settings", [this] { openSettings(ui(), audio(), save(), text().lang()); });
     ui().onClick("quit", [this] {
         quitting_ = true;
         scenes().pop();                   // this pause scene...

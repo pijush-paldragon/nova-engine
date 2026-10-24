@@ -1,0 +1,17 @@
+{
+  "language": "ja",
+  "fonts": ["fonts/NotoSansJP-sub.ttf", "fonts/NotoSansArabic-sub.ttf"],
+  "strings": {
+    "menu": { "best": "ベスト：[icon=sprites/ball] {score}", "play": "プレイ", "settings": "設定" },
+    "hud": {
+      "score": "スコア {score}",
+      "level": "レベル {level}",
+      "lives": { "other": "残り {count}" }
+    },
+    "pause": { "title": "一時停止", "resume": "再開", "settings": "設定", "quit": "メニューに戻る" },
+    "settings": { "title": "設定", "music": "音楽", "sfx": "効果音", "sound": "サウンド",
+                  "language": "言語", "done": "完了" },
+    "gameover": { "title": "ゲームオーバー", "score": "スコア {score}（レベル {level}）", "best": "ベスト {best}",
+                  "newBest": "新記録！", "again": "もう一度プレイ", "menu": "メニュー" }
+  }
+}

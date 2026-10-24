@@ -1,0 +1,17 @@
+{
+  "language": "de",
+  "fonts": ["fonts/NotoSansJP-sub.ttf", "fonts/NotoSansArabic-sub.ttf"],
+  "strings": {
+    "menu": { "best": "Rekord: [icon=sprites/ball] {score}", "play": "Spielen", "settings": "Einstellungen" },
+    "hud": {
+      "score": "Punkte {score}",
+      "level": "Level {level}",
+      "lives": { "one": "{count} Leben", "other": "{count} Leben" }
+    },
+    "pause": { "title": "Pause", "resume": "Weiterspielen", "settings": "Einstellungen", "quit": "Zurück zum Hauptmenü" },
+    "settings": { "title": "Einstellungen", "music": "Musik", "sfx": "Soundeffekte", "sound": "Ton",
+                  "language": "Sprache", "done": "Fertig" },
+    "gameover": { "title": "SPIEL VORBEI", "score": "Punkte {score}  (Level {level})", "best": "Rekord {best}",
+                  "newBest": "NEUER REKORD!", "again": "Noch einmal spielen", "menu": "Hauptmenü" }
+  }
+}

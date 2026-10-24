@@ -4,7 +4,6 @@
 #include "scenes/play_scene.hpp"
 #include "settings.hpp"
 
-#include <cstdio>
 
 using namespace nova;
 
@@ -32,11 +31,9 @@ void MenuScene::onEnter() {
     }
 
     ui().load("ui/menu.json");
-    char best[32];
-    std::snprintf(best, sizeof best, "Best: %lld", static_cast<long long>(save().getInt("best_score")));
-    ui().label("best").setText(best);
+    ui().label("best").setKey("menu.best", {{"score", save().getInt("best_score")}});
     ui().onClick("play", [this] { scenes().replace<PlayScene>(); });
-    ui().onClick("settings", [this] { openSettings(ui(), audio(), save()); });
+    ui().onClick("settings", [this] { openSettings(ui(), audio(), save(), text().lang()); });
 
     if (options().autoplay) timers().after(0.5f, [this] { scenes().replace<PlayScene>(); });
 }

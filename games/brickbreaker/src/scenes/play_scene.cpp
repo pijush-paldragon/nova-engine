@@ -6,7 +6,6 @@
 #include "systems.hpp"
 
 #include <algorithm>
-#include <cstdio>
 
 using namespace nova;
 
@@ -137,13 +136,10 @@ void PlayScene::launchBall() {
 
 void PlayScene::updateHud() {
     GameState& gs = gameState(world());
-    char text[32];
-    std::snprintf(text, sizeof text, "Score %d", gs.score);
-    ui().label("score").setText(text); // unchanged text costs nothing
-    std::snprintf(text, sizeof text, "Level %d", gs.level);
-    ui().label("level").setText(text);
-    std::snprintf(text, sizeof text, "Lives %d", gs.lives);
-    ui().label("lives").setText(text);
+    // Unchanged values cost nothing; a changed one re-renders the translation (no allocation).
+    ui().label("score").setKey("hud.score", {{"score", i64(gs.score)}});
+    ui().label("level").setKey("hud.level", {{"level", i64(gs.level)}});
+    ui().label("lives").setKey("hud.lives", {{"count", i64(gs.lives)}}); // plural form from count
 }
 
 void PlayScene::onUpdate(float dt) {

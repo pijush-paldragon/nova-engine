@@ -7,6 +7,7 @@
 #include <nova/text/text.hpp>
 
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 
@@ -29,6 +30,8 @@ public:
     void unloadFont(FontHandle font);
     // The SDL_ttf font behind a handle (engine use and tests), or null.
     TTF_Font* ttfFont(FontHandle font) const;
+    // The font, then its language's fallback fonts, written into buf (empty if the font is gone).
+    std::span<TTF_Font* const> fontChain(FontHandle font, std::span<TTF_Font*> buf) const;
 
     // Fonts are rasterised at design size x pixel scale so glyphs stay crisp on every screen.
     void setPixelScale(f32 scale);

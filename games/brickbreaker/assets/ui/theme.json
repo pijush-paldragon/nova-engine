@@ -20,6 +20,8 @@
     "icon": { "background": { "shape": "rounded", "radius": 24, "color": "#2a3152" }, "fontSize": 40,
               "clickSound": "sfx/hit.wav" },
     "panel": { "background": { "shape": "rounded", "radius": 32, "color": "#1b1f3bf2" }, "padding": 32 },
+    "lang": { "extends": "secondary", "fontSize": 32, "padding": [14, 8, 14, 8] },
+    "lang-on": { "extends": "primary", "fontSize": 32, "padding": [14, 8, 14, 8] },
     "slider": { "background": { "shape": "rounded", "radius": 8, "color": "#2a3152" }, "tint": "#ffd166" },
     "toggle": { "background": { "shape": "rounded", "radius": 16, "color": "#2a3152" },
                 "states": { "checked": { "background": { "shape": "rounded", "radius": 16, "color": "#4cc9f0" } } } }

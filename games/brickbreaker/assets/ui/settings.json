@@ -1,14 +1,21 @@
 {
   "type": "panel", "style": "panel", "width": 560, "layout": "column", "gap": 20, "align": "stretch",
   "children": [
-    { "type": "label", "style": "heading", "text": "Settings", "textAlign": "center" },
-    { "type": "label", "style": "muted", "text": "Music" },
+    { "type": "label", "style": "heading", "text": "@settings.title", "textAlign": "center", "overflow": "shrink" },
+    { "type": "label", "style": "muted", "text": "@settings.music" },
     { "type": "slider", "id": "music", "width": "fill", "step": 0.05 },
-    { "type": "label", "style": "muted", "text": "Sound effects" },
+    { "type": "label", "style": "muted", "text": "@settings.sfx" },
     { "type": "slider", "id": "sfx", "width": "fill", "step": 0.05 },
     { "type": "panel", "layout": "row", "align": "center", "justify": "space-between", "children": [
-        { "type": "label", "style": "body", "text": "Sound" },
+        { "type": "label", "style": "body", "text": "@settings.sound" },
         { "type": "toggle", "id": "sound" } ] },
-    { "type": "button", "id": "close", "style": "primary", "text": "Done" }
+    { "type": "label", "style": "muted", "text": "@settings.language" },
+    // Each language's own name, so a player can always find theirs.
+    { "type": "panel", "layout": "row", "gap": 12, "children": [
+        { "type": "button", "id": "lang_en", "style": "lang", "text": "English", "width": "fill", "overflow": "shrink" },
+        { "type": "button", "id": "lang_de", "style": "lang", "text": "Deutsch", "width": "fill", "overflow": "shrink" },
+        { "type": "button", "id": "lang_ja", "style": "lang", "text": "日本語", "width": "fill", "overflow": "shrink" },
+        { "type": "button", "id": "lang_ar", "style": "lang", "text": "العربية", "width": "fill", "overflow": "shrink" } ] },
+    { "type": "button", "id": "close", "style": "primary", "text": "@settings.done", "overflow": "shrink" }
   ]
 }

@@ -287,8 +287,27 @@ size_t Localization::format(std::span<char> out, std::string_view key, std::init
 
 size_t Localization::formatArgs(std::span<char> out, std::string_view key, std::span<const FormatArg> args,
                                 bool markup) const {
+    // A plural entry given an integer {count} picks its form, so keyed labels can show plurals.
+    for (const FormatArg& a : args) {
+        if (a.name != "count") continue;
+        if (const i64* count = std::get_if<i64>(&a.value)) {
+            if (const std::string* form = pluralForm(key, *count)) return fill(out, *form, args, nullptr, markup || hasMarkup(*form));
+        }
+    }
     const std::string_view tmpl = get(key);
     return fill(out, tmpl, args, nullptr, markup || hasMarkup(tmpl));
+}
+
+const std::string* Localization::pluralForm(std::string_view key, i64 count) const {
+    auto pick = [&](const Impl::Table& table, std::string_view lang) -> const std::string* {
+        auto it = table.find(key);
+        if (it == table.end() || !it->second.plural) return nullptr;
+        const PluralCategory c = pluralCategory(lang, count);
+        const auto& e = it->second;
+        return (e.formMask & (1u << u32(c))) ? &e.forms[size_t(c)] : &e.forms[size_t(PluralCategory::Other)];
+    };
+    if (const std::string* s = pick(impl_->current, impl_->info_.tag)) return s;
+    return pick(impl_->english, "en");
 }
 
 bool KeyArgs::assign(std::initializer_list<FormatArg> args) {
@@ -334,16 +353,8 @@ size_t KeyArgs::view(std::array<FormatArg, kMax>& out) const {
 size_t Localization::plural(std::span<char> out, std::string_view key, i64 count,
                             std::initializer_list<FormatArg> args) const {
     const FormatArg countArg{"count", count};
-    auto pick = [&](const Impl::Table& table, std::string_view lang) -> const std::string* {
-        auto it = table.find(key);
-        if (it == table.end() || !it->second.plural) return nullptr;
-        const PluralCategory c = pluralCategory(lang, count);
-        const auto& e = it->second;
-        return (e.formMask & (1u << u32(c))) ? &e.forms[size_t(c)] : &e.forms[size_t(PluralCategory::Other)];
-    };
     const std::span<const FormatArg> list(args.begin(), args.size());
-    if (const std::string* s = pick(impl_->current, impl_->info_.tag)) return fill(out, *s, list, &countArg, hasMarkup(*s));
-    if (const std::string* s = pick(impl_->english, "en")) return fill(out, *s, list, &countArg, hasMarkup(*s));
+    if (const std::string* s = pluralForm(key, count)) return fill(out, *s, list, &countArg, hasMarkup(*s));
     return fill(out, get(key), list, &countArg, false);
 }
 

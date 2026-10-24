@@ -1,0 +1,18 @@
+{
+  "language": "ar",
+  "fonts": ["fonts/NotoSansArabic-sub.ttf", "fonts/NotoSansJP-sub.ttf"],
+  "strings": {
+    "menu": { "best": "أفضل نتيجة: [icon=sprites/ball] {score}", "play": "العب", "settings": "الإعدادات" },
+    "hud": {
+      "score": "النقاط {score}",
+      "level": "المستوى {level}",
+      "lives": { "zero": "لا أرواح", "one": "روح واحدة", "two": "روحان", "few": "{count} أرواح",
+                 "many": "{count} روحًا", "other": "{count} روح" }
+    },
+    "pause": { "title": "إيقاف مؤقت", "resume": "متابعة", "settings": "الإعدادات", "quit": "العودة إلى القائمة" },
+    "settings": { "title": "الإعدادات", "music": "الموسيقى", "sfx": "المؤثرات الصوتية", "sound": "الصوت",
+                  "language": "اللغة", "done": "تم" },
+    "gameover": { "title": "انتهت اللعبة", "score": "النقاط {score} - المستوى {level}", "best": "أفضل نتيجة {best}",
+                  "newBest": "رقم قياسي جديد!", "again": "العب مرة أخرى", "menu": "القائمة" }
+  }
+}

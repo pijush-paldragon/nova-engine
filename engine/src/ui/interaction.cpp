@@ -25,10 +25,12 @@ Touch* findTouch(Canvas::Impl& impl, u64 pointer) {
     return nullptr;
 }
 
-// Slider value under the finger: the box's horizontal extent maps to [min, max], snapped to step.
+// Slider value under the finger: the box's horizontal extent maps to [min, max] (right to left
+// when mirrored), snapped to step.
 f32 sliderValueAt(const Element& e, const Rect& box, f32 x) {
     const UiSpec& s = e.spec;
-    const f32 t = box.w > 0 ? std::clamp((x - box.x) / box.w, 0.f, 1.f) : 0;
+    f32 t = box.w > 0 ? std::clamp((x - box.x) / box.w, 0.f, 1.f) : 0;
+    if (e.mirrored) t = 1 - t;
     f32 v = s.min + t * (s.max - s.min);
     if (s.step > 0) v = s.min + std::round((v - s.min) / s.step) * s.step;
     return std::clamp(v, std::min(s.min, s.max), std::max(s.min, s.max));

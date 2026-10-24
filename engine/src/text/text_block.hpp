@@ -15,6 +15,7 @@
 #include <vector>
 
 struct TTF_Text;
+struct TTF_Font;
 
 namespace nova {
 
@@ -84,6 +85,7 @@ public:
     u32 lineCount() const { return u32(rich_ ? richLines_.size() : lines_.size()); }
     size_t fontIndex() const { return fontIndex_; }
     bool empty() const { return text_.empty(); }
+    // Laid out as word pieces: markup, a right-to-left language, or glyphs from fallback fonts.
     bool rich() const { return rich_; }
     // The text as laid out (plain: with inserted line breaks and the ellipsis; rich: the visible
     // text without tags), and one line of plain text.
@@ -91,9 +93,12 @@ public:
     std::string_view lineText(u32 line) const;
     // Rich text's icons as placed by a draw with this box width and alignment; empty for plain text.
     std::span<const PlacedIcon> icons(f32 boxWidth, ui::TextAlignH align);
-    // Rich text pieces (tests): the font each word piece is shaped with.
+    // Pieces (tests): the run font each is shaped with, its text, and where a draw with this box
+    // width and alignment puts it (design units from the block's top-left).
     size_t pieceCount() const { return pieces_.size(); }
     FontHandle pieceFont(size_t i) const;
+    std::string_view pieceText(size_t i) const;
+    Rect pieceBox(size_t i, f32 boxWidth, ui::TextAlignH align) const;
 
     // Draws with its top-left at `topLeft` (design units), each line aligned within `boxWidth`,
     // scaled about `topLeft`.
@@ -146,8 +151,11 @@ private:
     struct Piece {
         u32 run = 0;
         u32 begin = 0, end = 0;  // visible bytes (trailing spaces and newline excluded)
-        f32 width = 0, advance = 0, ascent = 0, descent = 0, x = 0; // pixels
+        f32 width = 0, advance = 0, ascent = 0, descent = 0, x = 0; // pixels; x in reading order
+        f32 vx = 0;               // x as drawn (right-to-left lines reorder pieces)
+        i8 dir = 0;               // 1 left-to-right text (Latin, CJK, digits), -1 right-to-left, 0 neutral
         u32 line = 0;
+        TTF_Font* font = nullptr; // the one font of the run's chain this piece draws with
         bool breakBefore = false, newline = false, icon = false;
     };
     struct RichLine {
@@ -157,10 +165,13 @@ private:
 
     bool layout();
     void resolveRich(const RichResolver& resolver);
+    void plainRun();
+    bool needsPieces() const;
     bool shapeRich(size_t fontIndex);
     bool measurePiece(size_t i, size_t fontIndex);
     void placeRichLines(f32 baseAscent, f32 baseDescent, f32 baseHeight, f32 baseSkip);
     void stackRichLines(f32 baseHeight, f32 baseSkip);
+    void orderLine(const RichLine& line);
     void applyRichEllipsis(size_t fontIndex);
     void drawRich(Vec2 origin, f32 boxPx, f32 k, Color color, f32 scale);
     void releaseRich();

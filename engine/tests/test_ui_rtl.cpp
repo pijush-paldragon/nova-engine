@@ -150,3 +150,30 @@ TEST_CASE("Labels align to the start of their direction") {
     CHECK(fx.el(mirrored).spec.textAlign == TextAlignH::Start);
     (void)fixed;
 }
+
+TEST_CASE("Sliders, switches and progress bars run right to left") {
+    RtlFixture fx;
+    auto slider = fx.canvas.root().add<Slider>({.width = Size::px(400), .height = Size::px(48), .offset = {0, 0}});
+    fx.rtl(true);
+    const Rect box = slider.box();
+    // A touch near the right end is the low end of the range.
+    fx.press(1, {box.x + box.w * 0.9f, box.y + box.h * 0.5f});
+    fx.frame();
+    fx.release(1, {box.x + box.w * 0.9f, box.y + box.h * 0.5f});
+    fx.frame();
+    CHECK(slider.value() == doctest::Approx(0.1f).epsilon(0.05));
+
+    // The drawn fill starts at the right edge.
+    slider.setValue(0.25f);
+    fx.frame();
+    // The fill (drawn nine-sliced in the style's tint) spans the right quarter of the track.
+    const Color fill = *fx.shared->theme.resolve("slider", VisualState::Normal).tint;
+    f32 lo = 1e9f, hi = -1e9f;
+    for (const SpriteCmd& cmd : fx.canvas.impl().drawList.layers[0].sprites) {
+        if (!(cmd.color == fill)) continue;
+        lo = std::min(lo, cmd.xform.tx);
+        hi = std::max(hi, cmd.xform.tx + cmd.size.x * cmd.xform.a);
+    }
+    CHECK(hi == doctest::Approx(box.right()).epsilon(0.01));
+    CHECK(lo == doctest::Approx(box.right() - box.w * 0.25f).epsilon(0.01));
+}

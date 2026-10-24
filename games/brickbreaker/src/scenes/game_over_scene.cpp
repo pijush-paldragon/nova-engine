@@ -3,7 +3,6 @@
 #include "scenes/menu_scene.hpp"
 #include "scenes/play_scene.hpp"
 
-#include <cstdio>
 
 using namespace nova;
 
@@ -16,16 +15,13 @@ void GameOverScene::onEnter() {
     }
 
     ui().load("ui/game_over.json");
-    char text[48];
-    std::snprintf(text, sizeof text, "Score %d  (level %d)", score_, level_);
-    ui().label("score").setText(text);
+    ui().label("score").setKey("gameover.score", {{"score", i64(score_)}, {"level", i64(level_)}});
     if (newBest) {
-        ui().label("best").setText("NEW BEST!");
+        ui().label("best").setKey("gameover.newBest");
         ui().label("best").setStyle("highlight");
         ui().label("best").animate().scale(1.12f, 0.4f).ease(Ease::InOutQuad).yoyo().loop();
     } else {
-        std::snprintf(text, sizeof text, "Best %lld", static_cast<long long>(best));
-        ui().label("best").setText(text);
+        ui().label("best").setKey("gameover.best", {{"best", best}});
     }
     ui().onClick("again", [this] { scenes().replace<PlayScene>(); });
     ui().onClick("menu", [this] { scenes().replace<MenuScene>(); });

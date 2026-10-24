@@ -1,5 +1,6 @@
 #include "text/text_block.hpp"
 
+#include "text/font_runs.hpp"
 #include "text/line_break.hpp"
 #include "text/text_backend.hpp"
 
@@ -9,6 +10,7 @@
 #include <SDL3_ttf/SDL_ttf.h>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 
 namespace nova {
@@ -34,6 +36,20 @@ size_t lastCodepointStart(std::string_view s) {
 
 char32_t lastCodepoint(std::string_view s) { return s.empty() ? 0 : firstCodepoint(s.substr(lastCodepointStart(s))); }
 
+// Strong direction of a piece's text: right-to-left letters (Hebrew, Arabic and their
+// presentation forms) win; else any letter or digit makes it left to right; else neutral.
+i8 strongDirection(std::string_view s) {
+    const char* p = s.data();
+    size_t left = s.size();
+    i8 dir = 0;
+    while (left > 0) {
+        const char32_t c = SDL_StepUTF8(&p, &left);
+        if ((c >= 0x0590 && c <= 0x08FF) || (c >= 0xFB1D && c <= 0xFDFF) || (c >= 0xFE70 && c <= 0xFEFF)) return -1;
+        if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || c >= 0x00C0) dir = 1;
+    }
+    return dir;
+}
+
 // SDL_ttf reads a length of 0 as "null-terminated", so empty views must point at "".
 const char* textPtr(std::string_view s) { return s.empty() ? "" : s.data(); }
 
@@ -56,12 +72,14 @@ bool TextBlock::set(const TextBlockParams& p) {
     rtl_ = p.rtl;
     hadResolver_ = p.rich != nullptr;
     richRevision_ = p.richRevision;
-    rich_ = p.rich && text_.find('[') != std::string::npos;
-    if (rich_) {
-        lineTexts_.clear();
-        resolveRich(*p.rich);
-    } else {
+    const bool markup = p.rich && text_.find('[') != std::string::npos;
+    rich_ = markup || needsPieces();
+    if (!rich_) {
         releaseRich();
+    } else {
+        lineTexts_.clear();
+        if (markup) resolveRich(*p.rich);
+        else plainRun();
     }
     return layout();
 }
@@ -200,6 +218,12 @@ bool TextBlock::refresh() {
 }
 
 std::string_view TextBlock::lineText(u32 line) const {
+    if (rich_) {
+        if (line >= richLines_.size() || richLines_[line].count == 0) return {};
+        const RichLine& l = richLines_[line];
+        const u32 begin = pieces_[l.first].begin, end = pieces_[l.first + l.count - 1].end;
+        return end > begin ? std::string_view(richText_).substr(begin, end - begin) : std::string_view{};
+    }
     if (line >= lines_.size()) return {};
     return std::string_view(shown_).substr(lines_[line].offset, lines_[line].length);
 }
@@ -274,6 +298,29 @@ void TextBlock::releaseRich() {
     richTextLen_ = 0;
 }
 
+// Plain text the first font can't draw alone, or in a right-to-left language, is laid out as
+// pieces too: each piece is shaped with one font (aligned on a shared baseline) and right-to-left
+// lines place words right to left while numbers keep their own order.
+bool TextBlock::needsPieces() const {
+    if (rtl_) return !text_.empty();
+    std::array<TTF_Font*, 8> buf{};
+    return !firstFontCovers(backend_->fontChain(fonts_[0], buf), text_);
+}
+
+void TextBlock::plainRun() {
+    richText_.assign(text_);
+    richTextLen_ = u32(richText_.size());
+    breakOpportunities(richText_, breaks_);
+    const bool shrink = fitBox_.x > 0 || fitBox_.y > 0;
+    const size_t steps = shrink ? fonts_.size() : 1;
+    runs_.clear();
+    richFonts_.clear();
+    RichRun r;
+    r.end = richTextLen_;
+    runs_.push_back(r);
+    for (size_t step = 0; step < steps; ++step) richFonts_.push_back(fonts_[step]);
+}
+
 // Parses the markup and resolves every run's fonts (one per shrink step), colour and icon.
 void TextBlock::resolveRich(const RichResolver& resolver) {
     memory::LoadingScope setup; // changing rich text is setup work: fonts and icons may load
@@ -323,7 +370,7 @@ FontHandle TextBlock::pieceFont(size_t i) const {
 bool TextBlock::measurePiece(size_t i, size_t step) {
     Piece& p = pieces_[i];
     const RichRun& r = runs_[p.run];
-    TTF_Font* font = backend_->ttfFont(richFonts_[r.fontBase + step]);
+    TTF_Font* font = p.font ? p.font : backend_->ttfFont(richFonts_[r.fontBase + step]);
     if (!font) return false;
     if (p.icon) {
         const f32 h = f32(TTF_GetFontHeight(font)) * r.iconScale;
@@ -358,6 +405,7 @@ bool TextBlock::measurePiece(size_t i, size_t step) {
     p.advance = f32(w + sw);
     p.ascent = f32(TTF_GetFontAscent(font));
     p.descent = f32(-TTF_GetFontDescent(font));
+    p.dir = strongDirection(text);
     return true;
 }
 
@@ -365,8 +413,7 @@ bool TextBlock::shapeRich(size_t step) {
     TTF_Font* base = backend_->ttfFont(fonts_[step]);
     if (!base) return false;
     fontIndex_ = step;
-    memory::LoadingScope setup;      // pieces and their text objects (re-made only when text or size changes)
-    memory::DriverAllocScope driver; // SDL_ttf layout
+    memory::DriverAllocScope driver; // SDL_ttf layout and its text objects
     richText_.resize(richTextLen_);  // drop an earlier ellipsis
     pieces_.clear();
     for (u32 ri = 0; ri < runs_.size(); ++ri) {
@@ -379,18 +426,24 @@ bool TextBlock::shapeRich(size_t step) {
             pieces_.push_back(p);
             continue;
         }
-        // Split the run at break opportunities; a piece that doesn't start at one (a style change
-        // inside a word) stays on the line of the piece before it.
+        // Split the run at break opportunities, then where the font changes; a piece that doesn't
+        // start at a break (a style or font change inside a word) stays on the line of the one before.
+        std::array<TTF_Font*, 8> buf{};
+        const std::span<TTF_Font* const> chain = backend_->fontChain(richFonts_[r.fontBase + step], buf);
         for (u32 pos = r.begin; pos < r.end;) {
             auto next = std::upper_bound(breaks_.begin(), breaks_.end(), pos);
             const u32 end = next != breaks_.end() && *next < r.end ? *next : r.end;
-            Piece p;
-            p.run = ri;
-            p.begin = pos;
-            p.end = end;
-            p.breakBefore = pos == 0 || std::binary_search(breaks_.begin(), breaks_.end(), pos) ||
-                            (!pieces_.empty() && pieces_.back().icon);
-            pieces_.push_back(p);
+            const bool breakBefore = pos == 0 || std::binary_search(breaks_.begin(), breaks_.end(), pos) ||
+                                     (!pieces_.empty() && pieces_.back().icon);
+            forEachFontRun(chain, std::string_view(richText_).substr(pos, end - pos), [&](size_t b, size_t e, TTF_Font* f) {
+                Piece p;
+                p.run = ri;
+                p.begin = pos + u32(b);
+                p.end = pos + u32(e);
+                p.font = f;
+                p.breakBefore = b == 0 && breakBefore;
+                pieces_.push_back(p);
+            });
             pos = end;
         }
     }
@@ -419,6 +472,7 @@ void TextBlock::placeRichLines(f32 baseAscent, f32 baseDescent, f32 baseHeight, 
             line.width = std::max(line.width, pieces_[k].x + pieces_[k].width);
         }
         richLines_.push_back(line);
+        orderLine(richLines_.back());
         line = RichLine{};
         x = 0;
     };
@@ -448,6 +502,37 @@ void TextBlock::placeRichLines(f32 baseAscent, f32 baseDescent, f32 baseHeight, 
     stackRichLines(baseHeight, baseSkip);
 }
 
+// Where each piece of a line is drawn. Left-to-right lines keep reading order. Right-to-left
+// lines run right to left, except that a run of left-to-right pieces (a number, a Latin or CJK
+// phrase; neutral pieces between two such pieces join it) keeps its own order: piece-level bidi.
+void TextBlock::orderLine(const RichLine& line) {
+    const u32 end = line.first + line.count;
+    if (!rtl_) {
+        for (u32 k = line.first; k < end; ++k) pieces_[k].vx = pieces_[k].x;
+        return;
+    }
+    auto ltrAt = [&](u32 k) {
+        if (pieces_[k].dir != 0) return pieces_[k].dir > 0;
+        u32 before = k, after = k;
+        while (before > line.first && pieces_[before - 1].dir == 0) --before;
+        while (after + 1 < end && pieces_[after + 1].dir == 0) ++after;
+        return before > line.first && after + 1 < end && pieces_[before - 1].dir > 0 && pieces_[after + 1].dir > 0;
+    };
+    for (u32 k = line.first; k < end;) {
+        if (!ltrAt(k)) {
+            pieces_[k].vx = line.width - pieces_[k].x - pieces_[k].width;
+            ++k;
+            continue;
+        }
+        u32 last = k;
+        while (last + 1 < end && ltrAt(last + 1)) ++last;
+        // The run's span, mirrored as a whole, then laid out left to right inside it.
+        const f32 left = line.width - (pieces_[last].x + pieces_[last].width);
+        for (u32 j = k; j <= last; ++j) pieces_[j].vx = left + (pieces_[j].x - pieces_[k].x);
+        k = last + 1;
+    }
+}
+
 // Vertical placement: each line as tall as its tallest piece (at least the base font's line).
 void TextBlock::stackRichLines(f32 baseHeight, f32 baseSkip) {
     f32 y = 0, widest = 0, bottom = 0;
@@ -466,7 +551,6 @@ void TextBlock::applyRichEllipsis(size_t step) {
     if (maxLines_ <= 0 || richLines_.size() <= size_t(maxLines_)) return;
     TTF_Font* base = backend_->ttfFont(fonts_[step]);
     if (!base) return;
-    memory::LoadingScope setup;
     memory::DriverAllocScope driver;
     RichLine& last = richLines_[size_t(maxLines_ - 1)];
     pieces_.resize(last.first + last.count);
@@ -486,6 +570,8 @@ void TextBlock::applyRichEllipsis(size_t step) {
     richText_.append(kEllipsis);
     dots.end = u32(richText_.size());
     dots.line = u32(maxLines_ - 1);
+    std::array<TTF_Font*, 8> buf{};
+    dots.font = fontFor(backend_->fontChain(richFonts_[runs_[run].fontBase + step], buf), U'…');
     pieces_.push_back(dots);
     if (!measurePiece(pieces_.size() - 1, step)) {
         pieces_.pop_back();
@@ -508,22 +594,36 @@ void TextBlock::applyRichEllipsis(size_t step) {
     last.width = d.x + d.width;
     last.ascent = std::max(last.ascent, d.ascent);
     last.descent = std::max(last.descent, d.descent);
+    orderLine(last);
     stackRichLines(f32(TTF_GetFontHeight(base)), f32(TTF_GetFontLineSkip(base)));
+}
+
+std::string_view TextBlock::pieceText(size_t i) const {
+    if (i >= pieces_.size() || pieces_[i].icon) return {};
+    return std::string_view(richText_).substr(pieces_[i].begin, pieces_[i].end - pieces_[i].begin);
+}
+
+Rect TextBlock::pieceBox(size_t i, f32 boxWidth, ui::TextAlignH align) const {
+    if (i >= pieces_.size()) return {};
+    const f32 ps = backend_->pixelScale();
+    const ui::TextAlignH a = resolveAlign(align, rtl_);
+    const f32 k = a == ui::TextAlignH::Left ? 0 : a == ui::TextAlignH::Center ? 0.5f : 1;
+    const Piece& p = pieces_[i];
+    const RichLine& line = richLines_[p.line];
+    const f32 x = (boxWidth * ps - line.width) * k + p.vx;
+    const f32 y = line.y + line.ascent - p.ascent;
+    return {x / ps, y / ps, p.width / ps, (p.ascent + p.descent) / ps};
 }
 
 std::span<const PlacedIcon> TextBlock::icons(f32 boxWidth, ui::TextAlignH align) {
     placed_.clear();
     if (!rich_ || !refresh()) return {};
     const f32 ps = backend_->pixelScale();
-    const ui::TextAlignH a = resolveAlign(align, rtl_);
-    const f32 k = a == ui::TextAlignH::Left ? 0 : a == ui::TextAlignH::Center ? 0.5f : 1;
-    for (const Piece& p : pieces_) {
-        if (!p.icon) continue;
-        const RichLine& line = richLines_[p.line];
-        const f32 xIn = rtl_ ? line.width - p.x - p.width : p.x;
-        const f32 x = (boxWidth * ps - line.width) * k + xIn;
-        const f32 y = line.y + line.ascent - p.ascent;
-        placed_.push_back({runs_[p.run].region, {x / ps, y / ps, p.width / ps, p.ascent / ps}});
+    for (size_t i = 0; i < pieces_.size(); ++i) {
+        if (!pieces_[i].icon) continue;
+        Rect box = pieceBox(i, boxWidth, align);
+        box.h = pieces_[i].ascent / ps;
+        placed_.push_back({runs_[pieces_[i].run].region, box});
     }
     return placed_;
 }
@@ -545,8 +645,7 @@ void TextBlock::drawRich(Vec2 origin, f32 boxPx, f32 k, Color color, f32 scale) 
         const Piece& p = pieces_[i];
         if (p.icon || p.width <= 0 || i >= pieceTexts_.size() || !pieceTexts_[i]) continue;
         const RichLine& line = richLines_[p.line];
-        const f32 xIn = rtl_ ? line.width - p.x - p.width : p.x;
-        const f32 x = origin.x + ((boxPx - line.width) * k + xIn) * scale;
+        const f32 x = origin.x + ((boxPx - line.width) * k + p.vx) * scale;
         const f32 y = origin.y + (line.y + line.ascent - p.ascent) * scale;
         if (scale == 1) TTF_DrawRendererText(pieceTexts_[i].get(), std::round(x), std::round(y));
         else TTF_DrawRendererText(pieceTexts_[i].get(), x / scale, y / scale);

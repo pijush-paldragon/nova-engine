@@ -65,7 +65,9 @@ def strings_in(folder):
             elif isinstance(v, list):
                 for x in v:
                     walk(x)
-        walk(json.loads(text).get("strings", {}))
+        data = json.loads(text)
+        if isinstance(data, dict):  # skips languages.json (a list of tags)
+            walk(data.get("strings", {}))
     return "".join(sorted(chars))
 
 

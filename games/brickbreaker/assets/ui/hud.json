@@ -1,11 +1,13 @@
 {
-  // In-game HUD: a row across the top, kept clear of the notch.
+  // In-game HUD: a row across the top, kept clear of the notch. Right-to-left languages mirror it.
   "type": "panel", "width": "fill", "layout": "row", "align": "center", "gap": 16,
   "safeArea": true, "padding": [12, 24, 0, 24],
   "children": [
-    { "type": "label", "id": "score", "style": "hud", "text": "Score 0", "width": "fill" },
-    { "type": "label", "id": "level", "style": "hud-muted", "text": "Level 1", "width": "fill", "textAlign": "center" },
-    { "type": "label", "id": "lives", "style": "hud", "text": "Lives 3", "width": "fill", "textAlign": "right" },
+    { "type": "label", "id": "score", "style": "hud", "text": "@hud.score", "width": "fill", "overflow": "shrink" },
+    { "type": "label", "id": "level", "style": "hud-muted", "text": "@hud.level", "width": "fill", "textAlign": "center",
+      "overflow": "shrink" },
+    { "type": "label", "id": "lives", "style": "hud", "text": "@hud.lives", "width": "fill", "textAlign": "end",
+      "overflow": "shrink" },
     { "type": "button", "id": "pause", "style": "icon", "text": "II", "width": 96, "height": 96 }
   ]
 }

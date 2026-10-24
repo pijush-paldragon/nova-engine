@@ -1,0 +1,19 @@
+{
+  // Brick Breaker's strings. Every language file lists the fonts the language picker needs
+  // (each language's name is written in its own script).
+  "language": "en",
+  "fonts": ["fonts/NotoSansJP-sub.ttf", "fonts/NotoSansArabic-sub.ttf"],
+  "strings": {
+    "menu": { "best": "Best: [icon=sprites/ball] {score}", "play": "Play", "settings": "Settings" },
+    "hud": {
+      "score": "Score {score}",
+      "level": "Level {level}",
+      "lives": { "one": "{count} life", "other": "{count} lives" }
+    },
+    "pause": { "title": "Paused", "resume": "Resume", "settings": "Settings", "quit": "Quit to menu" },
+    "settings": { "title": "Settings", "music": "Music", "sfx": "Sound effects", "sound": "Sound",
+                  "language": "Language", "done": "Done" },
+    "gameover": { "title": "GAME OVER", "score": "Score {score}  (level {level})", "best": "Best {best}",
+                  "newBest": "NEW BEST!", "again": "Play again", "menu": "Menu" }
+  }
+}

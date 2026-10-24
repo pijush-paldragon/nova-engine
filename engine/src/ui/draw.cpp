@@ -409,7 +409,8 @@ void emitImage(Emitter& em, const Canvas::Impl& impl, const Element& e, Rect box
 }
 
 // Built-in looks for toggles, sliders and progress bars, from the style's background (track)
-// and tint (fill, knob accent).
+// and tint (fill, knob accent). Mirrored (right-to-left) they run from the right: a switch is on
+// with its knob on the left, a slider and a left/right progress bar fill from the right.
 void emitWidget(Emitter& em, const UiShared& shared, const Element& e, const Style& style, f32 opacity, const Xf& xf) {
     const Rect b = e.box;
     const Background& bg = *style.background;
@@ -426,7 +427,8 @@ void emitWidget(Emitter& em, const UiShared& shared, const Element& e, const Sty
         if (e.spec.look == ToggleLook::Switch) {
             shape(b, 32, bg.color);
             const f32 d = b.h - 8;
-            const f32 x = e.spec.on ? b.x + b.w - 4 - d * 0.5f : b.x + 4 + d * 0.5f;
+            const bool knobRight = e.spec.on != e.mirrored;
+            const f32 x = knobRight ? b.x + b.w - 4 - d * 0.5f : b.x + 4 + d * 0.5f;
             knob({x, b.y + b.h * 0.5f}, d, Color::White);
         } else {
             shape(b, 8, bg.color);
@@ -437,13 +439,17 @@ void emitWidget(Emitter& em, const UiShared& shared, const Element& e, const Sty
         const f32 t = range != 0 ? std::clamp((e.spec.value - e.spec.min) / range, 0.f, 1.f) : 0;
         const f32 trackH = 12, cy = b.y + b.h * 0.5f;
         shape({b.x, cy - trackH * 0.5f, b.w, trackH}, 8, bg.color);
-        shape({b.x, cy - trackH * 0.5f, b.w * t, trackH}, 8, *style.tint);
-        knob({b.x + b.w * t, cy}, std::min(40.f, b.h), Color::White);
+        const f32 fillX = e.mirrored ? b.x + b.w * (1 - t) : b.x;
+        shape({fillX, cy - trackH * 0.5f, b.w * t, trackH}, 8, *style.tint);
+        knob({e.mirrored ? fillX : b.x + b.w * t, cy}, std::min(40.f, b.h), Color::White);
     } else {
         const f32 v = std::clamp(e.shown, 0.f, 1.f);
         shape(b, 8, bg.color);
         Rect fill = b;
-        switch (e.spec.direction) {
+        FillDirection dir = e.spec.direction;
+        if (e.mirrored && dir == FillDirection::Right) dir = FillDirection::Left;
+        else if (e.mirrored && dir == FillDirection::Left) dir = FillDirection::Right;
+        switch (dir) {
             case FillDirection::Right: fill.w = b.w * v; break;
             case FillDirection::Left: fill = {b.x + b.w * (1 - v), b.y, b.w * v, b.h}; break;
             case FillDirection::Up: fill = {b.x, b.y + b.h * (1 - v), b.w, b.h * v}; break;

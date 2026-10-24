@@ -1,15 +1,17 @@
 {
   // Title screen, laid out on the 720x1280 design area (centred on any screen), so it lines up
-  // with the decorative brick row the scene draws at y = 700.
+  // with the decorative brick row the scene draws at y = 700. The title is the game's logo and
+  // stays in Latin letters in every language; everything else comes from text/<lang>.json.
   "type": "panel", "width": 720, "height": 1280, "anchor": "center", "layout": "column", "align": "center",
   "padding": [290, 0, 0, 0], "enter": "fade",
   "children": [
     { "type": "label", "style": "title", "text": "BRICK" },
     { "type": "label", "style": "title-gold", "text": "BREAKER" },
-    { "type": "label", "id": "best", "style": "muted", "text": "Best: 0" },
+    { "type": "label", "id": "best", "style": "muted", "text": "@menu.best" },
     { "type": "panel", "height": 210 },
-    { "type": "button", "id": "play", "style": "primary", "text": "Play", "width": 360 },
+    { "type": "button", "id": "play", "style": "primary", "text": "@menu.play", "width": 360, "overflow": "shrink" },
     { "type": "panel", "height": 24 },
-    { "type": "button", "id": "settings", "style": "secondary", "text": "Settings", "width": 360 }
+    { "type": "button", "id": "settings", "style": "secondary", "text": "@menu.settings", "width": 360,
+      "overflow": "shrink" }
   ]
 }
