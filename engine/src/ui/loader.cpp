@@ -45,7 +45,10 @@ constexpr EnumName<Justify> kJustify[] = {{"start", Justify::Start}, {"center", 
                                           {"space-between", Justify::SpaceBetween}};
 constexpr EnumName<Align> kAlign[] = {{"start", Align::Start}, {"center", Align::Center}, {"end", Align::End},
                                       {"stretch", Align::Stretch}};
-constexpr EnumName<TextAlignH> kTextAlign[] = {{"left", TextAlignH::Left}, {"center", TextAlignH::Center}, {"right", TextAlignH::Right}};
+constexpr EnumName<TextAlignH> kTextAlign[] = {{"left", TextAlignH::Left},   {"center", TextAlignH::Center},
+                                               {"right", TextAlignH::Right}, {"start", TextAlignH::Start},
+                                               {"end", TextAlignH::End}};
+constexpr EnumName<Overflow> kOverflow[] = {{"clip", Overflow::Clip}, {"shrink", Overflow::Shrink}};
 constexpr EnumName<ImageFit> kFit[] = {{"stretch", ImageFit::Stretch}, {"contain", ImageFit::Contain}, {"cover", ImageFit::Cover}};
 constexpr EnumName<ToggleLook> kLooks[] = {{"switch", ToggleLook::Switch}, {"checkbox", ToggleLook::Checkbox}};
 constexpr EnumName<FillDirection> kDirections[] = {{"right", FillDirection::Right}, {"left", FillDirection::Left},
@@ -56,11 +59,12 @@ constexpr EnumName<Transition> kTransitions[] = {
     {"slide-right", Transition::SlideRight}};
 
 constexpr const char* kElementKeys[] = {
-    "type",    "id",      "style",   "text",       "sprite",   "icon",      "width",     "height",    "minWidth",
-    "maxWidth", "minHeight", "maxHeight", "anchor", "offset", "layout",   "gap",       "padding",   "justify",
-    "align",   "safeArea", "visible", "enabled",   "opacity",  "blocksInput", "textAlign", "fit",     "slice",
-    "tint",    "look",    "on",      "min",        "max",      "step",      "value",     "direction", "animate",
-    "children", "include", "enter",  "exit"};
+    "type",     "id",       "style",       "text",     "sprite",      "icon",      "width",    "height",
+    "minWidth", "maxWidth", "minHeight",   "maxHeight", "anchor",     "offset",    "layout",   "gap",
+    "padding",  "justify",  "align",       "safeArea", "visible",     "enabled",   "opacity",  "blocksInput",
+    "textAlign", "wrap",    "maxLines",    "overflow", "minScale",    "lineSpacing", "fit",    "slice",
+    "tint",     "look",     "on",          "min",      "max",         "step",      "value",    "direction",
+    "animate",  "children", "include",     "enter",    "exit"};
 
 bool isKnown(std::string_view key, const char* const* begin, const char* const* end) {
     return std::any_of(begin, end, [&](const char* k) { return key == k; });
@@ -96,6 +100,10 @@ struct Reader {
     void number(yyjson_val* v, std::string_view key, f32& out) {
         if (yyjson_is_num(v)) out = f32(yyjson_get_num(v));
         else wrong(key, "a number");
+    }
+    void integer(yyjson_val* v, std::string_view key, i32& out) {
+        if (yyjson_is_int(v) && yyjson_get_sint(v) >= 0) out = i32(std::min<i64>(yyjson_get_sint(v), 1 << 20));
+        else wrong(key, "a whole number, 0 or more");
     }
     void boolean(yyjson_val* v, std::string_view key, bool& out) {
         if (yyjson_is_bool(v)) out = yyjson_get_bool(v);
@@ -248,6 +256,11 @@ struct LayoutParser {
             else if (key == "opacity") r.number(v, key, s.opacity);
             else if (key == "blocksInput") r.boolean(v, key, s.blocksInput);
             else if (key == "textAlign") r.choice(v, key, kTextAlign, s.textAlign);
+            else if (key == "wrap") r.boolean(v, key, s.wrap);
+            else if (key == "maxLines") r.integer(v, key, s.maxLines);
+            else if (key == "overflow") r.choice(v, key, kOverflow, s.overflow);
+            else if (key == "minScale") r.number(v, key, s.minScale);
+            else if (key == "lineSpacing") r.number(v, key, s.lineSpacing);
             else if (key == "fit") r.choice(v, key, kFit, s.imageFit);
             else if (key == "slice") r.insets(v, key, s.slice);
             else if (key == "tint") r.color(v, key, s.tint);

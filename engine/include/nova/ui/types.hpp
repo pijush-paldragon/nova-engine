@@ -20,7 +20,10 @@ enum class LayoutMode : u8 { Stack, Row, Column };
 enum class Anchor : u8 { TopLeft, Top, TopRight, Left, Center, Right, BottomLeft, Bottom, BottomRight };
 enum class Justify : u8 { Start, Center, End, SpaceBetween };
 enum class Align : u8 { Start, Center, End, Stretch };
-enum class TextAlignH : u8 { Left, Center, Right };
+// Start and End follow the language's direction (Start is Right in a right-to-left language).
+enum class TextAlignH : u8 { Left, Center, Right, Start, End };
+// What a label does when its text doesn't fit its box: draw past it, or step the font down.
+enum class Overflow : u8 { Clip, Shrink };
 enum class ImageFit : u8 { Stretch, Contain, Cover };
 enum class ToggleLook : u8 { Switch, Checkbox };
 enum class FillDirection : u8 { Right, Left, Up, Down };
@@ -74,6 +77,11 @@ struct UiSpec {
     bool blocksInput = false;
 
     TextAlignH textAlign = TextAlignH::Left;
+    bool wrap = false;       // labels and buttons: break lines at the content width
+    i32 maxLines = 0;        // 0 = no limit; overflow ends with "…"
+    Overflow overflow = Overflow::Clip;
+    f32 minScale = 0.6f;     // Shrink: smallest font size, as a share of the style's
+    f32 lineSpacing = 1;
     ImageFit imageFit = ImageFit::Stretch;
     Insets slice{};          // nine-slice insets in texels; all zero = stretch the whole sprite
     Color tint = Color::White;

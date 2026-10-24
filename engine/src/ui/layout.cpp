@@ -68,6 +68,39 @@ struct Snap {
 
 bool shown(const Element& e) { return e.spec.visible && !e.removed; }
 
+bool boxedText(const Element& e) {
+    return (e.kind == Kind::Label || e.kind == Kind::Button) && (e.spec.wrap || e.spec.overflow == Overflow::Shrink);
+}
+
+// After arranging: gives wrapping/shrinking text the content box it got. An axis the element
+// sizes to fit is bounded by its max size instead (its own box would only ever narrow). True if
+// any box changed.
+bool updateTextBoxes(ElementStore& store, const std::vector<UiHandle>& order) {
+    bool changed = false;
+    for (UiHandle h : order) {
+        Element& e = *store.get(h);
+        if (!boxedText(e)) continue;
+        const UiSpec& s = e.spec;
+        const Element* parent = store.get(e.parent);
+        const bool stretch = parent && parent->spec.align == Align::Stretch;
+        const bool setW = s.width.mode != Size::Mode::Fit || (stretch && parent->spec.layout == LayoutMode::Column);
+        const bool setH = s.height.mode != Size::Mode::Fit || (stretch && parent->spec.layout == LayoutMode::Row);
+        const Insets& p = e.padding;
+        auto bound = [](bool set, f32 box, f32 max, f32 pad) {
+            if (set) return std::max(0.f, box - pad);
+            return max < 1e8f ? std::max(0.f, max - pad) : 0.f;
+        };
+        const Vec2 inner{bound(setW, e.box.w, s.maxWidth, p.left + p.right),
+                         bound(setH, e.box.h, s.maxHeight, p.top + p.bottom)};
+        const bool shrink = s.overflow == Overflow::Shrink;
+        if (std::fabs(inner.x - e.textBox.x) > 0.5f || (shrink && std::fabs(inner.y - e.textBox.y) > 0.5f)) {
+            e.textBox = inner;
+            changed = true;
+        }
+    }
+    return changed;
+}
+
 // Pass 1, bottom-up: content sizes (padding included) for fit axes.
 void measureLayer(ElementStore& store, UiHandle root, MeasureFn measure, void* ctx, std::vector<UiHandle>& stack,
                   std::vector<UiHandle>& order) {
@@ -252,8 +285,13 @@ u32 layoutCanvas(ElementStore& store, const LayoutEnv& env, MeasureFn measure, v
     for (u16 layer = 0; layer < store.layerCount(); ++layer) {
         if (!envChanged && !store.dirty(layer)) continue;
         UiHandle root = store.layerRoot(layer);
-        measureLayer(store, root, measure, ctx, scratch.stack, scratch.order);
-        total += arrangeLayer(store, root, env, scratch.stack);
+        u32 count = 0;
+        for (int pass = 0; pass < 3; ++pass) {
+            measureLayer(store, root, measure, ctx, scratch.stack, scratch.order);
+            count = arrangeLayer(store, root, env, scratch.stack);
+            if (!updateTextBoxes(store, scratch.order)) break;
+        }
+        total += count;
         store.clearDirty(layer);
     }
     store.setLastEnv(env);

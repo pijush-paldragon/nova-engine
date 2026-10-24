@@ -22,12 +22,6 @@ namespace {
 
 std::atomic<u32> gLiveTexts{0};
 
-struct TextDeleter {
-    void operator()(TTF_Text* t) const {
-        TTF_DestroyText(t);
-        gLiveTexts.fetch_sub(1, std::memory_order_relaxed);
-    }
-};
 struct FontDeleter {
     void operator()(TTF_Font* f) const { TTF_CloseFont(f); }
 };
@@ -35,11 +29,9 @@ struct FontDeleter {
 // Engine-private component holding a label's laid-out text. Being a component, it is freed
 // with its entity (or its World) automatically.
 struct TextCache {
-    std::unique_ptr<TTF_Text, TextDeleter> text;
-    FontHandle font;
-    u32 revision = 0;
-    u32 fontGeneration = 0;
-    Color color{0, 0, 0, 0};
+    explicit TextCache(TextBackend& backend) : block(backend) {}
+    TextBlock block;
+    u32 revision = ~0u; // label revision the translation was rendered for
 };
 
 struct FontEntry {
@@ -52,11 +44,23 @@ struct FontEntry {
 struct DrawItem {
     u8 layer;
     u32 order;
-    TTF_Text* text;
-    f32 x, y;
+    Entity entity; // looked up again at draw: caches may move while labels are collected
+    Vec2 topLeft;
+    f32 width;
+    ui::TextAlignH align;
+    Color color;
 };
 
+ui::TextAlignH toAlignH(TextAlign a) {
+    return a == TextAlign::Left ? ui::TextAlignH::Left : a == TextAlign::Center ? ui::TextAlignH::Center : ui::TextAlignH::Right;
+}
+
 } // namespace
+
+void TtfTextDeleter::operator()(TTF_Text* t) const {
+    TTF_DestroyText(t);
+    gLiveTexts.fetch_sub(1, std::memory_order_relaxed);
+}
 
 struct Text::Impl {
     TTF_TextEngine* engine = nullptr;
@@ -194,10 +198,9 @@ void TextBackend::collectAndDraw(World& world, const ScreenFit& fit, Vec2 viewOr
             continue;
         }
         TextCache* cache = registry.try_get<TextCache>(e);
-        if (!cache) cache = &registry.emplace<TextCache>(e);
+        if (!cache) cache = &registry.emplace<TextCache>(e, *this);
 
         // Keyed labels render their translation again when the key, a value or the language changes.
-        bool retext = false;
         if (!label.key_.empty() && (label.langGen_ != lang_->generation() || cache->revision != label.revision())) {
             char buf[1024];
             std::array<FormatArg, KeyArgs::kMax> args;
@@ -205,110 +208,39 @@ void TextBackend::collectAndDraw(World& world, const ScreenFit& fit, Vec2 viewOr
             const size_t len = lang_->formatArgs(buf, label.key_, std::span<const FormatArg>(args.data(), n));
             label.shown_.assign(buf, len);
             label.langGen_ = lang_->generation();
-            retext = true;
         }
-        const std::string& s = label.displayed();
-        if (!cache->text || !(cache->font == label.font)) {
-            {
-                memory::DriverAllocScope driver; // SDL_ttf layout + GPU glyph uploads
-                cache->text.reset(TTF_CreateText(impl_->engine, font->font.get(), s.data(), s.size()));
-            }
-            if (!cache->text) continue;
-            gLiveTexts.fetch_add(1, std::memory_order_relaxed);
-            cache->color = {0, 0, 0, 0};
-            ++rebuilds_;
-        } else if (retext || cache->revision != label.revision() || cache->fontGeneration != impl_->fontGeneration) {
-            memory::DriverAllocScope driver;
-            TTF_SetTextString(cache->text.get(), s.data(), s.size());
-            ++rebuilds_;
-        }
-        cache->font = label.font;
         cache->revision = label.revision();
-        cache->fontGeneration = impl_->fontGeneration;
-        if (!(cache->color == label.color)) {
-            TTF_SetTextColor(cache->text.get(), label.color.r, label.color.g, label.color.b, label.color.a);
-            cache->color = label.color;
-        }
-
-        int w = 0, h = 0;
-        {
-            memory::DriverAllocScope driver; // may lay out lazily
-            TTF_GetTextSize(cache->text.get(), &w, &h);
-        }
-        Vec2 px = (t.pos - viewOrigin - Vec2{fit.visible.x, fit.visible.y}) * fit.scale;
-        f32 x = label.align == TextAlign::Left ? px.x : label.align == TextAlign::Center ? px.x - f32(w) * 0.5f : px.x - f32(w);
-        items.push_back({label.layer, order++, cache->text.get(), x, px.y - f32(h) * 0.5f});
+        TextBlockParams p;
+        p.fonts = std::span<const FontHandle>(&label.font, 1);
+        p.text = label.displayed();
+        p.wrapWidth = label.wrapWidth;
+        p.maxLines = label.maxLines;
+        p.lineSpacing = label.lineSpacing;
+        p.rtl = lang_->rightToLeft();
+        if (!cache->block.set(p) || cache->block.empty()) continue;
+        const Vec2 size = cache->block.size();
+        const Vec2 pos = t.pos - viewOrigin;
+        const f32 x = label.align == TextAlign::Left ? pos.x : label.align == TextAlign::Center ? pos.x - size.x * 0.5f : pos.x - size.x;
+        items.push_back({label.layer, order++, e, {x, pos.y - size.y * 0.5f}, size.x, toAlignH(label.align), label.color});
     }
 
     std::sort(items.begin(), items.end(), [](const DrawItem& a, const DrawItem& b) {
         return a.layer != b.layer ? a.layer < b.layer : a.order < b.order;
     });
-    memory::DriverAllocScope driver;
-    for (const DrawItem& item : items) TTF_DrawRendererText(item.text, std::round(item.x), std::round(item.y));
-}
-
-// ---- TextRun ------------------------------------------------------------------------------
-
-TextRun::~TextRun() {
-    if (text_) TextDeleter{}(text_);
-}
-
-bool TextRun::set(FontHandle font, std::string_view s) {
-    FontEntry* f = backend_->impl_->fonts.get(font);
-    if (!f) return false;
-    const bool sameFont = font_ == font && text_;
-    if (sameFont && s == string_ && fontGeneration_ == backend_->impl_->fontGeneration) return true;
-    string_.assign(s.data(), s.size()); // reuses capacity: no allocation unless the text grows
-    memory::DriverAllocScope driver;    // SDL_ttf layout
-    if (!sameFont) {
-        if (text_) TextDeleter{}(text_);
-        text_ = TTF_CreateText(backend_->impl_->engine, f->font.get(), string_.data(), string_.size());
-        if (!text_) return false;
-        gLiveTexts.fetch_add(1, std::memory_order_relaxed);
-        color_ = {0, 0, 0, 0};
-    } else {
-        TTF_SetTextString(text_, string_.data(), string_.size());
+    for (const DrawItem& item : items) {
+        if (TextCache* cache = registry.try_get<TextCache>(item.entity)) {
+            cache->block.draw(item.topLeft, item.width, item.align, fit, item.color, 1);
+        }
     }
-    font_ = font;
-    fontGeneration_ = backend_->impl_->fontGeneration;
-    ++backend_->rebuilds_;
-    return true;
 }
 
-bool TextRun::refresh() {
-    if (!text_ || !backend_->impl_->fonts.get(font_)) return false;
-    if (fontGeneration_ != backend_->impl_->fontGeneration) {
-        memory::DriverAllocScope driver;
-        TTF_SetTextString(text_, string_.data(), string_.size());
-        fontGeneration_ = backend_->impl_->fontGeneration;
-    }
-    return true;
+TtfTextPtr TextBackend::createText(TTF_Font* font, std::string_view s) {
+    TTF_Text* t = TTF_CreateText(impl_->engine, font, s.empty() ? "" : s.data(), s.size());
+    if (t) gLiveTexts.fetch_add(1, std::memory_order_relaxed);
+    return TtfTextPtr(t);
 }
 
-Vec2 TextRun::size() {
-    if (string_.empty() || !refresh()) return {};
-    int w = 0, h = 0;
-    memory::DriverAllocScope driver; // may lay out lazily
-    TTF_GetTextSize(text_, &w, &h);
-    return Vec2{f32(w), f32(h)} / backend_->pixelScale_;
-}
-
-void TextRun::draw(Vec2 topLeft, const ScreenFit& fit, Color color, f32 scale) {
-    if (string_.empty() || !refresh() || color.a == 0) return;
-    if (!(color == color_)) {
-        TTF_SetTextColor(text_, color.r, color.g, color.b, color.a);
-        color_ = color;
-    }
-    Vec2 px = (topLeft - Vec2{fit.visible.x, fit.visible.y}) * fit.scale;
-    memory::DriverAllocScope driver;
-    if (scale == 1) {
-        TTF_DrawRendererText(text_, std::round(px.x), std::round(px.y));
-        return;
-    }
-    SDL_SetRenderScale(backend_->renderer_, scale, scale);
-    TTF_DrawRendererText(text_, px.x / scale, px.y / scale);
-    SDL_SetRenderScale(backend_->renderer_, 1, 1);
-}
+u32 TextBackend::fontGeneration() const { return impl_->fontGeneration; }
 
 u32 TextBackend::liveTextCount() const { return gLiveTexts.load(std::memory_order_relaxed); }
 

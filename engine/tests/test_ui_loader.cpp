@@ -214,3 +214,31 @@ TEST_CASE("Failed load keeps the current tree") {
     CHECK(!fx.canvas.button("play").valid());
     CHECK(fx.canvas.label("coin_count").valid());
 }
+
+namespace {
+std::optional<std::string> readTextFields(std::string_view) {
+    return std::string(R"({ "type": "panel", "children": [
+        { "type": "label", "id": "a", "text": "x", "wrap": true, "maxLines": 2, "overflow": "shrink",
+          "minScale": 0.5, "lineSpacing": 1.2, "textAlign": "end" },
+        { "type": "label", "id": "b", "text": "y", "textAlign": "start", "maxLines": -1, "overflow": "squash" } ] })");
+}
+} // namespace
+
+TEST_CASE("Text layout fields parse") {
+    std::vector<NodeSpec> nodes;
+    LoadResult r = loadLayout("text.json", readTextFields, nullptr, nodes);
+    REQUIRE(r.ok);
+    const UiSpec& a = node(nodes, "a").spec;
+    CHECK(a.wrap);
+    CHECK(a.maxLines == 2);
+    CHECK(a.overflow == Overflow::Shrink);
+    CHECK(a.minScale == doctest::Approx(0.5f));
+    CHECK(a.lineSpacing == doctest::Approx(1.2f));
+    CHECK(a.textAlign == TextAlignH::End);
+    const UiSpec& b = node(nodes, "b").spec;
+    CHECK(b.textAlign == TextAlignH::Start);
+    CHECK(b.maxLines == 0);
+    CHECK(b.overflow == Overflow::Clip);
+    CHECK(hasError(r, R"(text.json: children[1] (label "b"): "maxLines" must be a whole number, 0 or more)"));
+    CHECK(r.errors.size() == 2); // and the unknown overflow value
+}

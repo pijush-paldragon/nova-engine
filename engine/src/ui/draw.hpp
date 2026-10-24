@@ -13,7 +13,7 @@
 
 namespace nova {
 class RendererBackend;
-class TextRun;
+class TextBlock;
 }
 
 namespace nova::ui {
@@ -49,11 +49,12 @@ struct UiShared {
 std::unique_ptr<UiShared> createUiShared(RendererBackend& renderer);
 
 struct TextItem {
-    TextRun* run = nullptr;
-    Rect box;          // design units, before the layer transform's scale
+    TextBlock* text = nullptr;
+    Rect box;          // design units, before the layer transform's scale; lines align within box.w
     Vec2 topLeft;      // where it is drawn, transform applied
     f32 scale = 1;
     Color color;
+    TextAlignH align = TextAlignH::Left;
 };
 
 struct DrawLayer {

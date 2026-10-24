@@ -15,13 +15,13 @@
 #include <vector>
 
 namespace nova {
-class TextRun;
+class TextBlock;
 }
 
 namespace nova::ui {
 
-struct TextRunDeleter {
-    void operator()(TextRun* run) const; // draw.cpp
+struct TextBlockDeleter {
+    void operator()(TextBlock* block) const; // draw.cpp
 };
 
 // One UI element. Tree links are intrusive handles, so the tree never allocates per node.
@@ -49,7 +49,9 @@ struct Element {
     SpriteRegion region;      // Image sprite, or Button icon
     SoundHandle clickSound;   // from the style
     SpriteRegion bgRegions[4]{}; // sprite backgrounds per VisualState, resolved once
-    std::unique_ptr<TextRun, TextRunDeleter> textRun;
+    std::unique_ptr<TextBlock, TextBlockDeleter> text;
+    std::vector<FontHandle> fonts; // the style's font size, then the shrink steps (Overflow::Shrink)
+    Vec2 textBox{};                // content box the text was last wrapped or shrunk to; 0 = not yet known
     // Text as shown: spec.text, or its translation when spec.text is "@key" (with keyArgs).
     std::string rendered;
     KeyArgs keyArgs;

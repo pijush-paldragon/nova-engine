@@ -9,6 +9,7 @@
 #include <render/renderer_backend.hpp>
 #include <scene/services.hpp>
 #include <text/text_backend.hpp>
+#include <text/text_block.hpp>
 
 #include <algorithm>
 #include <cmath>
@@ -16,7 +17,7 @@
 
 namespace nova::ui {
 
-void TextRunDeleter::operator()(TextRun* run) const { delete run; }
+void TextBlockDeleter::operator()(TextBlock* block) const { delete block; }
 
 // ---- Shared shape texture ----------------------------------------------------------------
 
@@ -112,6 +113,8 @@ namespace {
 
 bool carriesText(Kind k) { return k == Kind::Label || k == Kind::Button; }
 
+constexpr size_t kMaxShrinkFonts = 16;
+
 std::string_view styleNameOf(const Element& e) {
     return e.spec.style.empty() ? std::string_view(defaultStyleName(e.kind)) : std::string_view(e.spec.style);
 }
@@ -151,6 +154,19 @@ void renderText(Canvas::Impl& impl, Element& e) {
     e.keyDirty = false;
 }
 
+// Hands the element's text and its wrap/shrink box to its TextBlock (a no-op when unchanged).
+bool syncText(const Canvas::Impl& impl, Element& e) {
+    TextBlockParams p;
+    p.fonts = e.fonts;
+    p.text = e.rendered;
+    p.wrapWidth = e.spec.wrap ? e.textBox.x : 0;
+    p.maxLines = e.spec.maxLines;
+    p.lineSpacing = e.spec.lineSpacing;
+    if (e.spec.overflow == Overflow::Shrink) p.fitBox = e.textBox;
+    p.rtl = impl.services->text->lang().rightToLeft();
+    return e.text->set(p);
+}
+
 void prepareElement(Canvas::Impl& impl, Element& e, const UiShared& shared) {
     const Style& style = shared.theme.resolve(styleNameOf(e), VisualState::Normal);
     if (e.resolveDirty || e.themeGen != shared.theme.generation()) {
@@ -168,14 +184,27 @@ void prepareElement(Canvas::Impl& impl, Element& e, const UiShared& shared) {
                 e.font = assets->font(*style.font, *style.fontSize, impl.scope);
             }
         }
+        // Shrink-to-fit steps the font down 2 px at a time to minScale (at most 16 sizes); each
+        // size is a cached font.
+        e.fonts.clear();
+        if (e.font.valid()) {
+            e.fonts.push_back(e.font);
+            if (e.spec.overflow == Overflow::Shrink) {
+                const f32 size = *style.fontSize;
+                const f32 smallest = size * std::clamp(e.spec.minScale, 0.1f, 1.f);
+                for (f32 s = size - 2; s >= smallest - 1e-3f && e.fonts.size() < kMaxShrinkFonts; s -= 2) {
+                    e.fonts.push_back(assets->font(*style.font, s, impl.scope));
+                }
+            }
+        }
         e.clickSound = style.clickSound->empty() || !assets ? SoundHandle{} : assets->sound(*style.clickSound, impl.scope);
         for (int s = 0; s < 4; ++s) {
             const Background& bg = *shared.theme.resolve(styleNameOf(e), VisualState(s)).background;
             e.bgRegions[s] = bg.kind == Background::Kind::Sprite && assets ? resolveSprite(*assets, bg.sprite, impl.scope)
                                                                            : SpriteRegion{};
         }
-        if (carriesText(e.kind) && e.font.valid() && impl.services->text && !e.textRun) {
-            e.textRun.reset(new TextRun(*impl.services->text));
+        if (carriesText(e.kind) && e.font.valid() && impl.services->text && !e.text) {
+            e.text.reset(new TextBlock(*impl.services->text));
         }
         e.region = {};
         if (impl.services->assets) {
@@ -188,7 +217,7 @@ void prepareElement(Canvas::Impl& impl, Element& e, const UiShared& shared) {
     if (carriesText(e.kind)) renderText(impl, e);
     // Empty text keeps its text object (drawn as nothing), so clearing and re-setting a label
     // costs no allocation.
-    if (e.textRun && (!e.font.valid() || !e.textRun->set(e.font, e.rendered))) e.textRun.reset();
+    if (e.text && (!e.font.valid() || !syncText(impl, e))) e.text.reset();
 }
 
 Vec2 regionSize(const Canvas::Impl& impl, const SpriteRegion& r) {
@@ -199,9 +228,10 @@ Vec2 regionSize(const Canvas::Impl& impl, const SpriteRegion& r) {
 
 constexpr f32 kIconGap = 12;
 
-Vec2 measureElement(const Element& e, void* ctx) {
+Vec2 measureElement(Element& e, void* ctx) {
     const auto& impl = *static_cast<const Canvas::Impl*>(ctx);
-    Vec2 text = e.textRun ? e.textRun->size() : Vec2{};
+    if (e.text && !syncText(impl, e)) e.text.reset();
+    Vec2 text = e.text ? e.text->size() : Vec2{};
     switch (e.kind) {
         case Kind::Label: return text;
         case Kind::Image: return regionSize(impl, e.region);
@@ -430,7 +460,7 @@ void buildLayer(Canvas::Impl& impl, u16 layer, DrawLayer& out, std::vector<Frame
         Rect textArea = content;
         if (e.kind == Kind::Button && e.region.texture.valid()) {
             const Vec2 icon = regionSize(impl, e.region);
-            const Vec2 text = e.textRun ? e.textRun->size() : Vec2{};
+            const Vec2 text = e.text ? e.text->size() : Vec2{};
             const f32 k = icon.y > content.h && icon.y > 0 ? content.h / icon.y : 1;
             const f32 total = icon.x * k + (text.x > 0 ? kIconGap + text.x : 0);
             Rect dst{content.x + (content.w - total) * 0.5f, content.y + (content.h - icon.y * k) * 0.5f, icon.x * k,
@@ -440,15 +470,12 @@ void buildLayer(Canvas::Impl& impl, u16 layer, DrawLayer& out, std::vector<Frame
                         content.h};
             if (text.x > 0) textArea.w = text.x;
         }
-        if (e.textRun && !e.textRun->empty()) {
-            const Vec2 size = e.textRun->size();
+        if (e.text && !e.text->empty()) {
+            const Vec2 size = e.text->size();
             const TextAlignH align = e.kind == Kind::Button ? TextAlignH::Center : e.spec.textAlign;
-            const f32 x = align == TextAlignH::Left   ? textArea.x
-                        : align == TextAlignH::Center ? textArea.x + (textArea.w - size.x) * 0.5f
-                                                      : textArea.x + textArea.w - size.x;
-            const Rect box{x, textArea.y + (textArea.h - size.y) * 0.5f, size.x, size.y};
-            out.texts.push_back({e.textRun.get(), box, xf.apply({box.x, box.y}), xf.s,
-                                 modulate(*style.textColor, Color::White, opacity)});
+            const Rect box{textArea.x, textArea.y + (textArea.h - size.y) * 0.5f, textArea.w, size.y};
+            out.texts.push_back({e.text.get(), box, xf.apply({box.x, box.y}), xf.s,
+                                 modulate(*style.textColor, Color::White, opacity), align});
         }
 
         // Children in order: push in reverse so the first child is drawn first.
@@ -487,7 +514,7 @@ void uiDraw(Canvas& canvas, RendererBackend& renderer, SpriteBatch& batch) {
             for (const SpriteCmd& cmd : out.sprites) batch.push(cmd);
             renderer.submit(batch);
         }
-        for (const TextItem& t : out.texts) t.run->draw(t.topLeft, renderer.fit(), t.color, t.scale);
+        for (const TextItem& t : out.texts) t.text->draw(t.topLeft, t.box.w, t.align, renderer.fit(), t.color, t.scale);
     }
 }
 

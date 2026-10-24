@@ -15,15 +15,18 @@ using FontHandle = Handle<FontTag>;
 
 enum class TextAlign : u8 { Left, Center, Right };
 
-// A line of text drawn at its entity's Transform: horizontally anchored per `align`,
-// vertically centred. Text always draws above the scene's sprites; `layer` orders labels.
-// Changing the string re-lays out the text only when the content actually differs.
+// Text drawn at its entity's Transform: horizontally anchored per `align` (which also aligns
+// wrapped lines), vertically centred. Text always draws above the scene's sprites; `layer`
+// orders labels. Changing the string re-lays out the text only when the content actually differs.
 struct TextLabel {
     FontHandle font;
     Color color = Color::White;
     TextAlign align = TextAlign::Left;
     u8 layer = 0;
     bool visible = true;
+    f32 wrapWidth = 0;   // design units; 0 = break only at newlines
+    i32 maxLines = 0;    // 0 = no limit; overflow ends with "…"
+    f32 lineSpacing = 1;
 
     // Literal text.
     void set(std::string_view s) {
