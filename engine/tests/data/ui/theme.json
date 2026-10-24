@@ -1,0 +1,8 @@
+{ "styles": {
+    "primary": { "background": { "shape": "rounded", "radius": 16, "color": "#3b82f6" },
+                 "font": "fonts/Fredoka.ttf", "fontSize": 40, "textColor": "#ffffff", "padding": [8, 16, 8, 16],
+                 "clickSound": "sfx/hit.wav", "outline": { "color": "#000000" },
+                 "states": { "pressed": { "tint": "#d0d0d0" }, "disabled": { "opacity": 0.4 } } },
+    "danger": { "extends": "primary", "background": { "shape": "rounded", "radius": 16, "color": "#ef4444" } },
+    "skin": { "background": { "sprite": "sprites/paddle", "slice": [4, 8, 4, 8] }, "tint": "#ffffffcc" }
+} }

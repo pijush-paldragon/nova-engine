@@ -62,6 +62,11 @@ add_subdirectory("${NOVA_THIRD_PARTY_DIR}/entt" "${NOVA_THIRD_PARTY_BINARY_DIR}/
 add_library(nova_monocypher STATIC "${NOVA_THIRD_PARTY_DIR}/monocypher/src/monocypher.c")
 target_include_directories(nova_monocypher PUBLIC "${NOVA_THIRD_PARTY_DIR}/monocypher/src")
 
+# --- yyjson (UI layout files) -----------------------------------------------------------------
+add_library(nova_yyjson STATIC "${NOVA_THIRD_PARTY_DIR}/yyjson/src/yyjson.c")
+target_include_directories(nova_yyjson PUBLIC "${NOVA_THIRD_PARTY_DIR}/yyjson/src")
+target_compile_definitions(nova_yyjson PUBLIC YYJSON_DISABLE_WRITER=1)
+
 # --- zstd decompressor (asset pack); the nova_pack host tool builds the compressor itself ---
 file(GLOB NOVA_ZSTD_SOURCES
     "${NOVA_THIRD_PARTY_DIR}/zstd/lib/common/*.c" "${NOVA_THIRD_PARTY_DIR}/zstd/lib/decompress/*.c")

@@ -1,0 +1,1 @@
+{ "type": "panel", "children": [ { "include": "parts/coin.json", "id": "coins2", "gap": 9 } ] }

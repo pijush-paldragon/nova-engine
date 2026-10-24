@@ -25,6 +25,7 @@ target_compile_definitions(nova_tests PRIVATE NOVA_TESTING
     NOVA_TEST_ASSET_ROOT="${NOVA_ENGINE_DIR}/games/brickbreaker/assets/"
     NOVA_TEST_PACK="${NOVA_TEST_PACK}"
     NOVA_TEST_KEY_FILE="${CMAKE_CURRENT_SOURCE_DIR}/data/test.key"
+    NOVA_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/data/"
     NOVA_PACK_TOOL="${NOVA_PACK_TOOL}")
 
 include("${NOVA_ENGINE_DIR}/third_party/doctest/scripts/cmake/doctest.cmake")

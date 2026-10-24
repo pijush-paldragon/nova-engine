@@ -20,7 +20,7 @@ target_compile_options(nova PRIVATE ${NOVA_NO_EH_RTTI_FLAGS})
 target_link_libraries(nova
     PUBLIC  EnTT::EnTT
     PRIVATE SDL3::SDL3 SDL3_ttf::SDL3_ttf SDL3_mixer::SDL3_mixer box2d::box2d
-            nova_monocypher nova_zstd_decompress)
+            nova_monocypher nova_zstd_decompress nova_yyjson)
 
 target_compile_definitions(nova PUBLIC $<$<CONFIG:Debug>:NOVA_DEBUG NOVA_TRACK_ALLOCS>
                                        $<$<NOT:${NOVA_IS_RELEASE}>:NOVA_DEV_TOOLS>)

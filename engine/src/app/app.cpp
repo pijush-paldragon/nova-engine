@@ -1,5 +1,6 @@
 #include "app/app.hpp"
 
+#include "ui/loader.hpp"
 #include "ui/ui_backend.hpp"
 
 #include "platform/asset_io.hpp"
@@ -106,6 +107,7 @@ Result<void> App::init(int argc, char** argv) {
     services_.random = &random_;
     services_.frame = &frame_;
     uiShared_ = ui::createUiShared(*renderer_);
+    ui::loadGameTheme(*uiShared_, ui::assetFileReader());
     services_.ui = uiShared_.get();
 
     scenes_ = std::make_unique<SceneStack>(services_);

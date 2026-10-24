@@ -225,6 +225,26 @@ void uiUpdate(Canvas& canvas, f32 dt) {
     refreshLayout(canvas.impl());
 }
 
+void Canvas::Impl::buildLayer(u16 layer, const std::vector<NodeSpec>& nodes, std::string source,
+                              const LoadResult& result) {
+    const UiHandle root = store.layerRoot(layer);
+    std::vector<UiHandle> old;
+    store.forEachChild(root, [&](UiHandle h, const Element& e) {
+        if (!e.removed) old.push_back(h);
+    });
+    for (UiHandle h : old) store.remove(h);
+    std::vector<UiHandle> handles(nodes.size());
+    for (size_t i = 0; i < nodes.size(); ++i) {
+        const NodeSpec& n = nodes[i];
+        const UiHandle parent = n.parent < 0 ? root : handles[size_t(n.parent)];
+        handles[i] = store.add(parent, n.kind, n.spec);
+    }
+    if (layerSources.size() <= layer) layerSources.resize(layer + 1u);
+    if (layerFiles.size() <= layer) layerFiles.resize(layer + 1u);
+    layerSources[layer] = std::move(source);
+    layerFiles[layer] = result.files;
+}
+
 Remembered* Canvas::Impl::rememberFor(const Element& e) {
     if (e.spec.id.empty()) return nullptr;
     auto it = remembered.find(std::string_view(e.spec.id));

@@ -1,0 +1,17 @@
+{
+  // Comments and trailing commas are allowed in layout files.
+  "type": "panel", "id": "menu", "layout": "column", "gap": 12, "padding": [1, 2, 3, 4],
+  "justify": "space-between", "align": "stretch", "safeArea": true, "enter": "pop", "exit": "fade",
+  "children": [
+    { "type": "label", "id": "title", "style": "hud", "text": "Hello", "textAlign": "center",
+      "width": "fill", "height": "fit", "minWidth": 10, "maxWidth": 500, "minHeight": 5, "maxHeight": 90 },
+    { "type": "button", "id": "play", "text": "Play", "icon": "sprites/ball", "width": 120, "height": "fill:2",
+      "anchor": "bottom-right", "offset": [4, -6], "visible": false, "enabled": false, "opacity": 0.5,
+      "blocksInput": true },
+    { "type": "image", "id": "logo", "sprite": "sprites/paddle", "fit": "contain", "slice": 6, "tint": "#ff000080" },
+    { "type": "toggle", "id": "sound", "look": "checkbox", "on": true },
+    { "type": "slider", "id": "volume", "min": 0, "max": 10, "step": 2, "value": 4 },
+    { "type": "progress", "id": "hp", "direction": "up", "value": 0.25, "animate": 0.3 },
+    { "type": "panel", "id": "row", "layout": "row" },
+  ],
+}

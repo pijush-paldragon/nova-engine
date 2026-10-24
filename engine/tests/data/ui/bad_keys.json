@@ -1,0 +1,4 @@
+{ "type": "panel", "children": [
+    { "type": "button", "id": "play", "heigth": 10, "gap": "wide", "style": "nonexistent" },
+    { "type": "spinner", "id": "x" },
+    { "type": "label", "id": "play" } ] }

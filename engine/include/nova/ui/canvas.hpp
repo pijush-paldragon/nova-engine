@@ -20,6 +20,10 @@ public:
 
     ElementRef root();
 
+    // Replaces the screen with a layout file (asset-root relative, e.g. "ui/menu.json"). If the
+    // file can't be read or parsed, the current screen stays (and dev builds log why).
+    void load(std::string_view file);
+
     ElementRef element(std::string_view id);
     PanelRef panel(std::string_view id);
     ImageRef image(std::string_view id);

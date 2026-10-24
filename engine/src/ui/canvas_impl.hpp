@@ -2,6 +2,7 @@
 
 #include "ui/draw.hpp"
 #include "ui/element_store.hpp"
+#include "ui/loader.hpp"
 
 #include <nova/assets/asset_cache.hpp>
 
@@ -80,6 +81,8 @@ struct Canvas::Impl {
     DrawList drawList;                              // last frame's draw commands
     u32 themeGen = 0;                               // theme generation the elements were resolved with
     std::vector<std::string> layerSources{"code"}; // what built each layer, for messages
+    std::vector<std::vector<std::string>> layerFiles{{}}; // files each layer was loaded from (reload)
+    FileReader reader;                              // where load() reads files (assets by default)
     std::unordered_set<std::string> reported;      // "kind:id" already logged as missing
 
     std::unordered_map<std::string, BindingPtr, IdHash, std::equal_to<>> idBindings;
@@ -90,6 +93,9 @@ struct Canvas::Impl {
     std::array<Anim, kAnimSlots> anims{};
     u64 animCounter = 0;
     std::unordered_map<std::string, Remembered, IdHash, std::equal_to<>> remembered;
+
+    // Replaces a layer's content with parsed nodes.
+    void buildLayer(u16 layer, const std::vector<NodeSpec>& nodes, std::string source, const LoadResult& result);
 
     // The remembered values for an element's id (null for elements without one).
     Remembered* rememberFor(const Element& e);
