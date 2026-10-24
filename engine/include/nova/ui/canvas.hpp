@@ -13,7 +13,7 @@ namespace nova::ui {
 class PopupRef {
 public:
     PopupRef() = default;
-    PopupRef(Canvas* canvas, UiHandle content) : canvas_(canvas), content_(content) {}
+    PopupRef(Canvas* canvas, u32 token) : canvas_(canvas), token_(token) {}
 
     bool valid() const;
     // Starts the exit transition; onClose runs when it has finished and the popup is gone.
@@ -33,7 +33,7 @@ public:
 private:
     UiHandle find(std::string_view id, int kind) const; // kind -1: any
     Canvas* canvas_ = nullptr;
-    UiHandle content_;
+    u32 token_ = 0; // identifies the popup's layer, also across live reloads of its file
 };
 
 // A scene's UI: a tree of elements drawn above the scene's world. Reached with Scene::ui().

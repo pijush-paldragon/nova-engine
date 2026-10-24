@@ -221,16 +221,22 @@ void MenuScene::onEnter() {
   colour, or an atlas sprite with nine-slice `"slice"` insets), outline, tint, padding, font,
   font size, text colour, click sound, and `states` for `pressed`, `disabled` and `checked`.
   A style can `extends` another; one without `extends` builds on `"default"`, so set your font
-  there. Without a theme, built-in styles (`primary`, `secondary`, `danger`, `panel`, `hud`) work
-  but labels need a font.
+  there. Naming a style that already exists (`"default"`, `"primary"`, ...) changes only the
+  properties you give, so the built-in pressed tint, 0.95 press scale and 50% disabled opacity
+  stay unless you override them. A derived style can set any property back (`"padding": 0`,
+  `"background": "none"`, `"outline": "none"`). Without a theme, the built-in styles (`primary`,
+  `secondary`, `danger`, `panel`, `hud`) work, but labels need a font.
 - **Sprites** in layouts are `"<atlas>/<region>"` (e.g. `"sprites/coin"`) or a `.png` path.
 - **Touches:** buttons click when the finger lifts inside them, and a press cancels if the finger
-  slides more than 16 px away. A touch that lands on a button never reaches gameplay:
-  `input().tapped()` and `input().primary()` skip it.
+  slides more than 16 px away. A touch that lands on a button (disabled ones included) never
+  reaches gameplay: `input().tapped()` and `input().primary()` skip it.
 - **Popups:** `ui().push("ui/dialog.json", {...})` opens a popup above everything, with a dimmed
   backdrop that blocks touches below. Android back / Escape closes the top popup first.
-  `popup.onClose(...)` runs after its exit transition. Transitions are `fade`, `pop` and
-  `slide-up/down/left/right`.
+  `popup.onClose(...)` runs after its exit transition. Transitions are `none`, `fade`, `pop` and
+  `slide-up/down/left/right`. A layout file's root can set `"enter"` and `"exit"`; options passed
+  to `push` win. On a screen loaded with `load`, `"enter"` plays when it appears.
+  Callbacks bound through a popup (`popup.button("close").onClick(...)`) belong to that popup,
+  so two dialogs can both have a `"close"` button; `ui().onClick(id, ...)` applies to every layer.
 - **Animation:** `ui().button("play").animate().scale(1.05f, 0.8f).yoyo().loop()`, plus
   `.fade(...)` and `.move(...)`. Animating never re-runs layout.
 - **Includes:** `{"include": "ui/parts/coins.json", "id": "coins"}` reuses a piece of layout,
@@ -240,9 +246,10 @@ void MenuScene::onEnter() {
   click handlers are kept. A broken edit keeps the old screen and shows a red bar with the error
   (file, line and column) until you fix it. Phones and release builds load layouts once; release
   builds read them from the encrypted `game.pak`.
-- **No allocations per frame:** updating a label with text no longer than before is free, and
-  setting the same text again does nothing. Use `char` buffers and `snprintf`, as with
-  `TextLabel`.
+- **No allocations per frame:** updating a label with text no longer than before is free, setting
+  the same text again does nothing, and clearing a label (`setText("")`) keeps its text object.
+  Use `char` buffers and `snprintf`, as with `TextLabel`. Loading a screen, opening a popup,
+  adding elements and binding callbacks count as setup, so they're fine mid-game.
 
 ## The rules of the engine
 

@@ -11,6 +11,9 @@ using MeasureFn = Vec2 (*)(const Element& element, void* ctx);
 // number of elements laid out: 0 when nothing changed. Iterative and allocation-free.
 u32 layoutCanvas(ElementStore& store, const LayoutEnv& env, MeasureFn measure, void* ctx);
 
+// Pre-sizes layout's scratch space (so a later pass doesn't allocate).
+void reserveLayoutScratch(size_t n);
+
 // An element and everything that can change its size: marks its layer for layout.
 void markLayoutDirty(ElementStore& store, UiHandle h);
 

@@ -100,10 +100,10 @@ Animator& Animator::onDone(std::function<void()> fn) {
 #undef NOVA_ANIM_SLOT
 
 void applyTransition(Canvas::Impl& impl, u16 layer) {
-    if (layer == 0 || layer >= impl.layerInfo.size()) return;
+    if (layer >= impl.layerInfo.size()) return;
     const LayerInfo& info = impl.layerInfo[layer];
     const bool exiting = info.phase == LayerInfo::Phase::Exiting;
-    const Transition kind = exiting ? info.options.exit : info.options.enter;
+    const Transition kind = exiting ? info.exit : info.enter;
     const f32 dur = info.options.duration;
     f32 k = 1; // 0 = hidden, 1 = fully shown
     if (info.phase != LayerInfo::Phase::Open && kind != Transition::None && dur > 0) {
@@ -115,38 +115,40 @@ void applyTransition(Canvas::Impl& impl, u16 layer) {
     if (Element* backdrop = impl.store.live(info.backdrop)) backdrop->spec.opacity = info.options.dim * k;
     Element* content = impl.store.live(info.content);
     if (!content) return;
-    content->scale = 1;
-    content->spec.opacity = 1;
-    content->spec.offset = {};
+    // Transitions build on the root's own offset, opacity and scale.
+    content->scale = info.rootScale;
+    content->spec.opacity = info.rootOpacity;
+    content->spec.offset = info.rootOffset;
     if (info.phase == LayerInfo::Phase::Open) return;
     const Rect screen = impl.store.lastEnv().root;
     switch (kind) {
         case Transition::None: break;
-        case Transition::Fade: content->spec.opacity = k; break;
+        case Transition::Fade: content->spec.opacity = info.rootOpacity * k; break;
         case Transition::Pop:
             // Entering overshoots (OutBack); leaving shrinks straight back.
-            content->scale = 0.85f + 0.15f * (exiting ? k : ease(Ease::OutBack, k));
-            content->spec.opacity = k;
+            content->scale = info.rootScale * (0.85f + 0.15f * (exiting ? k : ease(Ease::OutBack, k)));
+            content->spec.opacity = info.rootOpacity * k;
             break;
-        case Transition::SlideUp: content->spec.offset = {0, screen.h * (1 - ease(Ease::OutQuad, k))}; break;
-        case Transition::SlideDown: content->spec.offset = {0, -screen.h * (1 - ease(Ease::OutQuad, k))}; break;
-        case Transition::SlideLeft: content->spec.offset = {screen.w * (1 - ease(Ease::OutQuad, k)), 0}; break;
-        case Transition::SlideRight: content->spec.offset = {-screen.w * (1 - ease(Ease::OutQuad, k)), 0}; break;
+        case Transition::SlideUp: content->spec.offset.y += screen.h * (1 - ease(Ease::OutQuad, k)); break;
+        case Transition::SlideDown: content->spec.offset.y -= screen.h * (1 - ease(Ease::OutQuad, k)); break;
+        case Transition::SlideLeft: content->spec.offset.x += screen.w * (1 - ease(Ease::OutQuad, k)); break;
+        case Transition::SlideRight: content->spec.offset.x -= screen.w * (1 - ease(Ease::OutQuad, k)); break;
     }
 }
 
 void updateTransitions(Canvas::Impl& impl, f32 dt) {
-    // Top-down, so finishing a layer only shifts layers already visited.
-    for (u16 layer = u16(impl.layerInfo.size()); layer-- > 1;) {
+    // Top-down, so finishing a layer only shifts layers already visited. Layer 0 (the screen)
+    // only ever enters.
+    for (u16 layer = u16(impl.layerInfo.size()); layer-- > 0;) {
         LayerInfo& info = impl.layerInfo[layer];
         if (info.phase == LayerInfo::Phase::Open) continue;
         info.t += dt;
-        const bool instant = info.options.duration <= 0 ||
-                             (info.phase == LayerInfo::Phase::Exiting ? info.options.exit : info.options.enter) == Transition::None;
-        if (info.phase == LayerInfo::Phase::Entering && (instant || info.t >= info.options.duration)) {
+        const bool exiting = info.phase == LayerInfo::Phase::Exiting;
+        const bool instant = info.options.duration <= 0 || (exiting ? info.exit : info.enter) == Transition::None;
+        if (!exiting && (instant || info.t >= info.options.duration)) {
             info.phase = LayerInfo::Phase::Open;
             info.t = 0;
-        } else if (info.phase == LayerInfo::Phase::Exiting && (instant || info.t >= info.options.duration)) {
+        } else if (exiting && (instant || info.t >= info.options.duration)) {
             impl.finishLayer(layer);
             continue;
         }

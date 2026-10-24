@@ -67,5 +67,7 @@ struct DrawList {
 
 // Resolves styles, fonts, sprites and text where needed, then lays out dirty layers.
 void refreshLayout(Canvas::Impl& impl);
+// Pre-sizes the draw traversal's scratch space.
+void reserveDrawScratch(size_t n);
 
 } // namespace nova::ui

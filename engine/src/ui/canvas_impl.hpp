@@ -70,7 +70,11 @@ struct Remembered {
 struct LayerInfo {
     enum class Phase : u8 { Open, Entering, Exiting };
     PopupOptions options;
+    Transition enter = Transition::None, exit = Transition::None; // resolved from options / file
+    u32 token = 0;                                                 // stable id (0: the screen)
     UiHandle backdrop, content;
+    Vec2 rootOffset{};                                             // the root's own values, which
+    f32 rootOpacity = 1, rootScale = 1;                            // transitions build on
     Phase phase = Phase::Open;
     f32 t = 0;
     std::function<void()> onClose;
@@ -99,13 +103,21 @@ struct Canvas::Impl {
     std::vector<LayerInfo> layerInfo{LayerInfo{}};  // per layer; index 0 is the screen
 
     // Popups (canvas.cpp).
-    u16 createPopupLayer(const PopupOptions& options);
+    u16 createPopupLayer(const PopupOptions& options, Transition enter, Transition exit);
+    // Records a layer's root element and the values its transitions start from.
+    void setLayerContent(u16 layer, UiHandle content);
     void closeLayer(u16 layer);
     void finishLayer(u16 layer); // removes it and runs onClose
-    u16 layerOfContent(UiHandle content) const; // 0 when not a popup root
+    u16 layerOfToken(u32 token) const; // 0 when that popup is gone
+    u32 nextToken = 1;
+    // Sizes scratch space and lays out after a structural change, so the frames that follow
+    // don't allocate (called inside the change's LoadingScope).
+    void prepareNow();
     std::unordered_set<std::string> reported;      // "kind:id" already logged as missing
 
-    std::unordered_map<std::string, BindingPtr, IdHash, std::equal_to<>> idBindings;
+    using IdBindings = std::unordered_map<std::string, BindingPtr, IdHash, std::equal_to<>>;
+    IdBindings globalBindings;                         // Canvas::onClick(id): any layer
+    std::unordered_map<u32, IdBindings> scopedBindings; // through references: per layer token
     std::unordered_map<u64, BindingPtr> handleBindings;
     std::array<Touch, 10> touches{};
     std::vector<UiEvent> events;
@@ -123,7 +135,8 @@ struct Canvas::Impl {
     // Replaces the binding of `h` (by its id when it has one) with a copy changed by `edit`.
     void bind(UiHandle h, const std::function<void(Binding&)>& edit);
     void bindId(std::string_view id, const std::function<void(Binding&)>& edit);
-    BindingPtr bindingOf(UiHandle h) const;
+    BindingPtr bindingOf(UiHandle h) const;       // the element's own (layer) binding, else canvas-wide
+    BindingPtr globalBindingOf(UiHandle h) const; // canvas-wide only
 
     // Dev builds log a missing id or wrong kind once per (kind, id).
     void reportMissing(std::string_view id, const char* what, u16 layer);

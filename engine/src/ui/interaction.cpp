@@ -88,7 +88,11 @@ UiHandle hitTest(Canvas::Impl& impl, Vec2 pos, bool& blocked) {
         for (size_t i = order.size(); i-- > 1;) { // index 0 is the layer root
             const Element& e = *store.get(order[i]);
             if (!visualBox(store, order[i]).contains(pos)) continue;
-            if (isInteractive(e.kind) && e.spec.enabled) return order[i];
+            if (isInteractive(e.kind)) {
+                if (e.spec.enabled) return order[i];
+                blocked = true; // a disabled control still shields what's beneath it
+                return {};
+            }
             if (e.spec.blocksInput) {
                 blocked = true;
                 return {};
@@ -100,21 +104,32 @@ UiHandle hitTest(Canvas::Impl& impl, Vec2 pos, bool& blocked) {
 
 // ---- Bindings ----------------------------------------------------------------------------
 
-void Canvas::Impl::bindId(std::string_view id, const std::function<void(Binding&)>& edit) {
-    auto it = idBindings.find(id);
-    auto next = it != idBindings.end() && it->second ? std::make_shared<Binding>(*it->second) : std::make_shared<Binding>();
+namespace {
+
+void replaceIn(Canvas::Impl::IdBindings& map, std::string_view id, const std::function<void(Binding&)>& edit) {
+    memory::LoadingScope setup; // binding is setup, never per-frame work
+    auto it = map.find(id);
+    auto next = it != map.end() && it->second ? std::make_shared<Binding>(*it->second) : std::make_shared<Binding>();
     edit(*next);
-    if (it != idBindings.end()) it->second = std::move(next);
-    else idBindings.emplace(std::string(id), std::move(next));
+    if (it != map.end()) it->second = std::move(next);
+    else map.emplace(std::string(id), std::move(next));
+}
+
+} // namespace
+
+void Canvas::Impl::bindId(std::string_view id, const std::function<void(Binding&)>& edit) {
+    replaceIn(globalBindings, id, edit);
 }
 
 void Canvas::Impl::bind(UiHandle h, const std::function<void(Binding&)>& edit) {
     const Element* e = store.live(h);
     if (!e) return;
     if (!e->spec.id.empty()) {
-        bindId(e->spec.id, edit);
+        // Scoped to the element's layer: two popups may both have a "close" button.
+        replaceIn(scopedBindings[layerInfo[e->layer].token], e->spec.id, edit);
         return;
     }
+    memory::LoadingScope setup;
     BindingPtr& slot = handleBindings[handleKey(h)];
     auto next = slot ? std::make_shared<Binding>(*slot) : std::make_shared<Binding>();
     edit(*next);
@@ -122,14 +137,25 @@ void Canvas::Impl::bind(UiHandle h, const std::function<void(Binding&)>& edit) {
 }
 
 BindingPtr Canvas::Impl::bindingOf(UiHandle h) const {
+    // The layer's own binding first, then canvas-wide ones (Canvas::onClick).
     const Element* e = store.get(h);
     if (!e) return nullptr;
-    if (!e->spec.id.empty()) {
-        auto it = idBindings.find(std::string_view(e->spec.id));
-        return it != idBindings.end() ? it->second : nullptr;
+    if (e->spec.id.empty()) {
+        auto it = handleBindings.find(handleKey(h));
+        return it != handleBindings.end() ? it->second : nullptr;
     }
-    auto it = handleBindings.find(handleKey(h));
-    return it != handleBindings.end() ? it->second : nullptr;
+    if (auto layer = scopedBindings.find(layerInfo[e->layer].token); layer != scopedBindings.end()) {
+        if (auto it = layer->second.find(std::string_view(e->spec.id)); it != layer->second.end()) return it->second;
+    }
+    auto it = globalBindings.find(std::string_view(e->spec.id));
+    return it != globalBindings.end() ? it->second : nullptr;
+}
+
+BindingPtr Canvas::Impl::globalBindingOf(UiHandle h) const {
+    const Element* e = store.get(h);
+    if (!e || e->spec.id.empty()) return nullptr;
+    auto it = globalBindings.find(std::string_view(e->spec.id));
+    return it != globalBindings.end() ? it->second : nullptr;
 }
 
 void Canvas::onClick(std::string_view id, std::function<void()> fn) {
@@ -180,7 +206,7 @@ void uiInput(Canvas& canvas, InputBackend& input) {
         if (!t) continue;
         Element* e = impl.store.live(t->owner);
         if (!e || !e->spec.enabled || !e->spec.visible) t->cancelled = true;
-        else if (e->kind == Kind::Slider) {
+        else if (e->kind == Kind::Slider && !t->cancelled) {
             // Sliders follow the finger anywhere until it lifts.
             const f32 v = sliderValueAt(*e, visualBox(impl.store, t->owner), p.pos.x);
             if (v != e->spec.value) {
@@ -229,20 +255,27 @@ void uiDispatch(Canvas& canvas) {
         if (ev.type == UiEvent::Type::Click && e->clickSound.valid() && impl.services && impl.services->audio) {
             impl.services->audio->play(e->clickSound);
         }
-        BindingPtr b = impl.bindingOf(ev.h); // keeps the callback alive even if it rebinds itself
-        if (!b) continue;
+        // Local copies keep a callback alive even if it rebinds itself. A layer's binding wins;
+        // a callback it doesn't have falls back to the canvas-wide binding.
+        const BindingPtr own = impl.bindingOf(ev.h);
+        const BindingPtr global = impl.globalBindingOf(ev.h);
+        auto pick = [&](auto member) -> const Binding* {
+            if (own && own.get()->*member) return own.get();
+            if (global && global.get()->*member) return global.get();
+            return nullptr;
+        };
         switch (ev.type) {
             case UiEvent::Type::Click:
-                if (b->click) b->click();
+                if (const Binding* b = pick(&Binding::click)) b->click();
                 break;
             case UiEvent::Type::Toggle:
-                if (b->toggle) b->toggle(ev.value != 0);
+                if (const Binding* b = pick(&Binding::toggle)) b->toggle(ev.value != 0);
                 break;
             case UiEvent::Type::Change:
-                if (b->change) b->change(ev.value);
+                if (const Binding* b = pick(&Binding::change)) b->change(ev.value);
                 break;
             case UiEvent::Type::Commit:
-                if (b->commit) b->commit(ev.value);
+                if (const Binding* b = pick(&Binding::commit)) b->commit(ev.value);
                 break;
         }
     }

@@ -47,6 +47,7 @@ struct Element {
     FontHandle font;
     SpriteRegion region;      // Image sprite, or Button icon
     SoundHandle clickSound;   // from the style
+    SpriteRegion bgRegions[4]{}; // sprite backgrounds per VisualState, resolved once
     std::unique_ptr<TextRun, TextRunDeleter> textRun;
 };
 

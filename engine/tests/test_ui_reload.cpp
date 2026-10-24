@@ -137,7 +137,7 @@ TEST_CASE("Editing an included file or the theme reloads") {
     src.write("ui/theme.json", R"({ "styles": { "gold": { "textColor": "#ff0000" } } })");
     settle(fx);
     CHECK(fx.shared->theme.generation() != gen);
-    CHECK(fx.shared->theme.resolve("gold", VisualState::Normal).textColor == Color::fromHex(0xFF0000FF));
+    CHECK(fx.shared->theme.resolve("gold", VisualState::Normal).textColor.value() == Color::fromHex(0xFF0000FF));
 }
 
 TEST_CASE("Reload from inside a click callback") {

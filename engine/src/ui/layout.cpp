@@ -40,6 +40,23 @@ Insets paddingOf(const Element& e, const LayoutEnv& env, const Rect& box) {
     return p;
 }
 
+// The safe-area insets a box would add to its padding (see paddingOf).
+Insets safeInsets(const Rect& box, const LayoutEnv& env) {
+    const Rect& s = env.safeArea;
+    return {std::max(0.f, s.y - box.y), std::max(0.f, box.right() - s.right()), std::max(0.f, box.bottom() - s.bottom()),
+            std::max(0.f, s.x - box.x)};
+}
+
+// Measuring can't know where a box will land, so a fit-sized safe-area container is grown here by
+// the insets its position needs (otherwise its content would be squeezed or pushed out).
+// Returns the growth on each axis.
+Vec2 safeGrowth(const Element& e, const Rect& box, const LayoutEnv& env) {
+    if (!e.spec.safeArea) return {};
+    const Insets in = safeInsets(box, env);
+    return {e.spec.width.mode == Size::Mode::Fit ? in.left + in.right : 0,
+            e.spec.height.mode == Size::Mode::Fit ? in.top + in.bottom : 0};
+}
+
 struct Snap {
     f32 scale;
     f32 operator()(f32 v) const { return std::round(v * scale) / scale; }
@@ -165,6 +182,12 @@ u32 arrangeLayer(ElementStore& store, UiHandle root, const LayoutEnv& env, std::
                 box.h = axis(s.height, c.measured.y, s.minHeight, s.maxHeight, content.h);
                 box.x = content.x + (content.w - box.w) * anchorX(s.anchor);
                 box.y = content.y + (content.h - box.h) * anchorY(s.anchor);
+                if (const Vec2 grow = safeGrowth(c, box, env); grow.x > 0 || grow.y > 0) {
+                    box.w += grow.x; // re-anchored, so the anchored edge stays put
+                    box.h += grow.y;
+                    box.x = content.x + (content.w - box.w) * anchorX(s.anchor);
+                    box.y = content.y + (content.h - box.h) * anchorY(s.anchor);
+                }
             } else {
                 const Size& mainSize = row ? s.width : s.height;
                 const Size& crossSize = row ? s.height : s.width;
@@ -183,6 +206,15 @@ u32 arrangeLayer(ElementStore& store, UiHandle root, const LayoutEnv& env, std::
                                                                   : 0;
                 if (row) box = {content.x + cursor, content.y + crossPos, mainLen, crossLen};
                 else box = {content.x + crossPos, content.y + cursor, crossLen, mainLen};
+                if (const Vec2 grow = safeGrowth(c, box, env); grow.x > 0 || grow.y > 0) {
+                    mainLen += row ? grow.x : grow.y; // grows away from its start
+                    crossLen += row ? grow.y : grow.x;
+                    crossPos = parent.spec.align == Align::Center ? (crossSpace - crossLen) * 0.5f
+                             : parent.spec.align == Align::End    ? crossSpace - crossLen
+                                                                  : 0;
+                    if (row) box = {content.x + cursor, content.y + crossPos, mainLen, crossLen};
+                    else box = {content.x + crossPos, content.y + cursor, crossLen, mainLen};
+                }
                 cursor += mainLen + gap;
             }
             c.box = snap(box);
@@ -196,10 +228,21 @@ struct LayoutScratch {
     std::vector<UiHandle> stack, order;
 };
 
+LayoutScratch& layoutScratch() {
+    static thread_local LayoutScratch scratch;
+    return scratch;
+}
+
 } // namespace
 
+void reserveLayoutScratch(size_t n) {
+    LayoutScratch& scratch = layoutScratch();
+    if (scratch.stack.capacity() < n) scratch.stack.reserve(n);
+    if (scratch.order.capacity() < n) scratch.order.reserve(n);
+}
+
 u32 layoutCanvas(ElementStore& store, const LayoutEnv& env, MeasureFn measure, void* ctx) {
-    static thread_local LayoutScratch scratch;
+    LayoutScratch& scratch = layoutScratch();
     if (scratch.stack.capacity() < store.size()) {
         scratch.stack.reserve(store.size() * 2);
         scratch.order.reserve(store.size() * 2);

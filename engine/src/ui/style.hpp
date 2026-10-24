@@ -29,19 +29,46 @@ struct StateStyle {
 
 enum class VisualState : u8 { Normal, Pressed, Disabled, Checked };
 
+// A style property that remembers whether it was set, so a derived style can set a value equal to
+// the default (fontSize 32, white text, no padding) and still override its parent. Assigning, or
+// editing through ->, marks it set; reading through * or -> on a const style doesn't.
+template <class T>
+class Prop {
+public:
+    Prop() = default;
+    Prop(T fallback) : value_(std::move(fallback)) {} // a default, not "set"
+    Prop& operator=(T v) {
+        value_ = std::move(v);
+        set_ = true;
+        return *this;
+    }
+    const T& operator*() const { return value_; }
+    const T& value() const { return value_; }
+    const T* operator->() const { return &value_; }
+    T* operator->() {
+        set_ = true;
+        return &value_;
+    }
+    bool isSet() const { return set_; }
+
+private:
+    T value_{};
+    bool set_ = false;
+};
+
 struct Style {
     std::string extends;
-    Background background;
-    std::optional<Color> outlineColor;
-    f32 outlineWidth = 2;
-    Color tint = Color::White;
-    f32 opacity = 1;
-    f32 scale = 1;
-    Insets padding;
-    std::string font;
-    f32 fontSize = 32;
-    Color textColor = Color::White;
-    std::string clickSound;
+    Prop<Background> background;
+    Prop<std::optional<Color>> outlineColor;
+    Prop<f32> outlineWidth = 2.f;
+    Prop<Color> tint = Color::White;
+    Prop<f32> opacity = 1.f;
+    Prop<f32> scale = 1.f;
+    Prop<Insets> padding;
+    Prop<std::string> font;
+    Prop<f32> fontSize = 32.f;
+    Prop<Color> textColor = Color::White;
+    Prop<std::string> clickSound;
     StateStyle pressed, disabled, checked;
 };
 
@@ -56,6 +83,9 @@ struct IdHashSv {
 class Theme {
 public:
     void set(std::string name, Style style);
+    // Changes only the properties `style` sets (keeping the existing style's others and its
+    // extends, unless given); a new name is simply set.
+    void patch(const std::string& name, const Style& style);
     bool has(std::string_view name) const { return entries_.find(name) != entries_.end(); }
     const Style& resolve(std::string_view name, VisualState state) const;
     // Bumped by every set(), so elements know to re-resolve fonts and sprites.
@@ -79,6 +109,21 @@ private:
 
 // Dev builds log each distinct message once per process; release builds log nothing.
 void logOnce(const std::string& message);
+
+// Logs a message once per (kind, name); the message is only built the first time, so a lookup
+// repeated every frame (a typo'd style) costs a set lookup, never an allocation.
+enum class LogKey : u8 { UnknownStyle, NoFont, BadSprite, StyleExtends, Count };
+bool firstReport(LogKey key, std::string_view name);
+template <class F>
+void logOnceFor(LogKey key, std::string_view name, F&& makeMessage) {
+#if defined(NOVA_DEV_TOOLS)
+    if (firstReport(key, name)) logOnce(makeMessage());
+#else
+    (void)key;
+    (void)name;
+    (void)makeMessage;
+#endif
+}
 
 // The style an element uses when its spec names none.
 const char* defaultStyleName(Kind kind);

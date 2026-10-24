@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <render/renderer_backend.hpp>
+#include <input/input_internal.hpp>
 #include <scene/services.hpp>
 
 namespace nova::ui {
@@ -151,6 +152,7 @@ void ElementRef::setScale(f32 scale) {
 }
 
 UiHandle ElementRef::addChild(Kind kind, const UiSpec& spec) {
+    memory::LoadingScope building; // adding UI is setup, not per-frame work
     return canvas_ ? canvas_->impl().store.add(h_, kind, spec) : UiHandle{};
 }
 
@@ -272,8 +274,8 @@ void Canvas::Impl::buildLayer(u16 layer, const std::vector<NodeSpec>& nodes, std
         const UiHandle parent = n.parent < 0 ? root : handles[size_t(n.parent)];
         handles[i] = store.add(parent, n.kind, layer > 0 && i == 0 ? popupRootSpec(n.spec) : n.spec);
     }
-    if (layer > 0 && !handles.empty()) {
-        layerInfo[layer].content = handles[0];
+    if (!handles.empty()) {
+        setLayerContent(layer, handles[0]);
         applyTransition(*this, layer); // a reloaded popup keeps its transition state
     }
     if (layerSources.size() <= layer) layerSources.resize(layer + 1u);
@@ -285,12 +287,29 @@ void Canvas::Impl::buildLayer(u16 layer, const std::vector<NodeSpec>& nodes, std
 
 // ---- Popups ----------------------------------------------------------------------------------
 
-u16 Canvas::Impl::createPopupLayer(const PopupOptions& options) {
-    // A finger already down belongs to what was under it; nothing beneath a new popup may click.
+void Canvas::Impl::setLayerContent(u16 layer, UiHandle content) {
+    LayerInfo& info = layerInfo[layer];
+    info.content = content;
+    if (const Element* e = store.live(content)) {
+        info.rootOffset = e->spec.offset;
+        info.rootOpacity = e->spec.opacity;
+        info.rootScale = e->scale;
+    }
+}
+
+u16 Canvas::Impl::createPopupLayer(const PopupOptions& options, Transition enter, Transition exit) {
+    // A finger already down belongs to what was under it; nothing beneath a new popup may click,
+    // and gameplay stops seeing it too.
     for (Touch& t : touches) {
         if (!t.active) continue;
         t.cancelled = true;
         if (Element* e = store.live(t.owner)) e->pressed = false;
+    }
+    if (services && services->input) {
+        InputBackend& input = *services->input;
+        for (int i = 0; i < input.pointerCount(); ++i) {
+            if (input.pointer(i)->held) input.setConsumed(input.pointer(i)->id);
+        }
     }
     store.addLayer();
     const u16 layer = u16(store.layerCount() - 1);
@@ -301,8 +320,10 @@ u16 Canvas::Impl::createPopupLayer(const PopupOptions& options) {
     LayerInfo& info = layerInfo[layer];
     info = LayerInfo{};
     info.options = options;
-    const bool animated = options.enter != Transition::None && options.duration > 0;
-    info.phase = animated ? LayerInfo::Phase::Entering : LayerInfo::Phase::Open;
+    info.enter = enter;
+    info.exit = exit;
+    info.token = nextToken++;
+    info.phase = enter != Transition::None && options.duration > 0 ? LayerInfo::Phase::Entering : LayerInfo::Phase::Open;
     UiSpec backdrop{.style = "ui-backdrop", .width = Size::fill(), .height = Size::fill(), .blocksInput = true};
     const UiHandle h = store.add(store.layerRoot(layer), options.closeOnBackdrop ? Kind::Button : Kind::Panel, backdrop);
     store.get(h)->backdrop = true;
@@ -334,6 +355,7 @@ void Canvas::Impl::closeLayer(u16 layer) {
 
 void Canvas::Impl::finishLayer(u16 layer) {
     std::function<void()> done = std::move(layerInfo[layer].onClose);
+    scopedBindings.erase(layerInfo[layer].token);
     store.eraseLayer(layer);
     layerInfo.erase(layerInfo.begin() + layer);
     layerSources.erase(layerSources.begin() + layer);
@@ -342,9 +364,28 @@ void Canvas::Impl::finishLayer(u16 layer) {
     if (done) done();
 }
 
-u16 Canvas::Impl::layerOfContent(UiHandle content) const {
-    const Element* e = store.live(content);
-    return e && e->layer > 0 && layerInfo[e->layer].content == content ? e->layer : 0;
+u16 Canvas::Impl::layerOfToken(u32 token) const {
+    if (token == 0) return 0;
+    for (u16 layer = 1; layer < layerInfo.size(); ++layer) {
+        if (layerInfo[layer].token == token) return layer;
+    }
+    return 0;
+}
+
+void Canvas::Impl::prepareNow() {
+    const size_t n = store.size() * 2 + 16;
+    if (hitScratch.capacity() < n) hitScratch.reserve(n);
+    if (hitStack.capacity() < n) hitStack.reserve(n);
+    if (events.capacity() < 16) events.reserve(16);
+    reserveLayoutScratch(n);
+    reserveDrawScratch(n);
+    if (drawList.layers.size() < store.layerCount()) drawList.layers.resize(store.layerCount());
+    for (DrawLayer& layer : drawList.layers) {
+        // Every element can emit up to 9 quads (nine-slice) plus a few for widgets.
+        if (layer.sprites.capacity() < store.size() * 12) layer.sprites.reserve(store.size() * 12);
+        if (layer.texts.capacity() < store.size()) layer.texts.reserve(store.size());
+    }
+    refreshLayout(*this); // fonts, text objects and layout, now rather than in the next frame
 }
 
 PopupRef Canvas::push(std::string_view file, PopupOptions options) {
@@ -356,19 +397,26 @@ PopupRef Canvas::push(std::string_view file, PopupOptions options) {
     LoadResult result = loadLayout(file, impl.reader, theme, nodes);
     logLoadResult(result);
     if (!result.ok) return {};
-    const u16 layer = impl.createPopupLayer(options);
+    // The caller's choice, else the file's root "enter"/"exit", else pop in and fade out.
+    const Transition enter = options.enter.value_or(result.enter.value_or(Transition::Pop));
+    const Transition exit = options.exit.value_or(result.exit.value_or(Transition::Fade));
+    const u16 layer = impl.createPopupLayer(options, enter, exit);
     impl.buildLayer(layer, nodes, std::string(file), result);
     applyTransition(impl, layer);
-    return PopupRef(this, impl.layerInfo[layer].content);
+    impl.prepareNow();
+    return PopupRef(this, impl.layerInfo[layer].token);
 }
 
 PopupRef Canvas::push(const UiSpec& root, PopupOptions options) {
+    memory::LoadingScope loading;
     Impl& impl = *impl_;
-    const u16 layer = impl.createPopupLayer(options);
+    const u16 layer = impl.createPopupLayer(options, options.enter.value_or(Transition::Pop),
+                                            options.exit.value_or(Transition::Fade));
     const UiHandle content = impl.store.add(impl.store.layerRoot(layer), Kind::Panel, popupRootSpec(root));
-    impl.layerInfo[layer].content = content;
+    impl.setLayerContent(layer, content);
     applyTransition(impl, layer);
-    return PopupRef(this, content);
+    impl.prepareNow();
+    return PopupRef(this, impl.layerInfo[layer].token);
 }
 
 void Canvas::pop() {
@@ -386,24 +434,28 @@ u32 Canvas::popupCount() const {
     return n;
 }
 
-bool PopupRef::valid() const { return canvas_ && canvas_->impl().layerOfContent(content_) != 0; }
+bool PopupRef::valid() const { return canvas_ && canvas_->impl().layerOfToken(token_) != 0; }
 
 void PopupRef::close() {
     if (!canvas_) return;
-    if (u16 layer = canvas_->impl().layerOfContent(content_)) canvas_->impl().closeLayer(layer);
+    if (u16 layer = canvas_->impl().layerOfToken(token_)) canvas_->impl().closeLayer(layer);
 }
 
 void PopupRef::onClose(std::function<void()> fn) {
     if (!canvas_) return;
-    if (u16 layer = canvas_->impl().layerOfContent(content_)) canvas_->impl().layerInfo[layer].onClose = std::move(fn);
+    if (u16 layer = canvas_->impl().layerOfToken(token_)) canvas_->impl().layerInfo[layer].onClose = std::move(fn);
 }
 
-ElementRef PopupRef::root() { return valid() ? ElementRef(canvas_, content_) : ElementRef(); }
+ElementRef PopupRef::root() {
+    if (!canvas_) return {};
+    const u16 layer = canvas_->impl().layerOfToken(token_);
+    return layer ? ElementRef(canvas_, canvas_->impl().layerInfo[layer].content) : ElementRef();
+}
 
 UiHandle PopupRef::find(std::string_view id, int kind) const {
     if (!canvas_) return {};
     Canvas::Impl& impl = canvas_->impl();
-    const u16 layer = impl.layerOfContent(content_);
+    const u16 layer = impl.layerOfToken(token_);
     if (layer == 0) return {};
     const UiHandle h = impl.store.findIn(layer, id);
     const Element* e = impl.store.live(h);

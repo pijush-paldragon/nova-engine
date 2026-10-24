@@ -33,8 +33,8 @@ struct LoadResult {
     std::string firstError;          // the first fatal error or validation message
     std::vector<std::string> errors; // every validation message, in file order
     std::vector<std::string> files;  // every file read: the layout, then its includes
-    Transition enter = Transition::None;
-    Transition exit = Transition::None;
+    std::optional<Transition> enter; // the root's "enter"/"exit", when given
+    std::optional<Transition> exit;
 };
 
 // Parses a layout file. Validation problems (unknown keys, wrong types, unknown styles when a

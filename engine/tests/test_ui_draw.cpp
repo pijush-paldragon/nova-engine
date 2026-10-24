@@ -29,16 +29,16 @@ TEST_CASE("Theme resolves extends and states") {
     theme.set("base", base);
     Style child;
     child.extends = "base";
-    child.background.kind = Background::Kind::Shape;
-    child.background.radius = 16;
+    child.background->kind = Background::Kind::Shape;
+    child.background->radius = 16;
     child.pressed.tint = Color::fromHex(0xD9D9D9FF);
     theme.set("child", child);
     const Style& normal = theme.resolve("child", VisualState::Normal);
-    CHECK(normal.font == "fonts/Fredoka.ttf"); // inherited
-    CHECK(normal.background.radius == 16);
-    CHECK(normal.tint == Color::White);
-    CHECK(theme.resolve("child", VisualState::Pressed).tint == Color::fromHex(0xD9D9D9FF));
-    CHECK(theme.resolve("child", VisualState::Disabled).opacity == doctest::Approx(0.5f)); // built-in default
+    CHECK(normal.font.value() == "fonts/Fredoka.ttf"); // inherited
+    CHECK(normal.background.value().radius == 16);
+    CHECK(normal.tint.value() == Color::White);
+    CHECK(theme.resolve("child", VisualState::Pressed).tint.value() == Color::fromHex(0xD9D9D9FF));
+    CHECK(theme.resolve("child", VisualState::Disabled).opacity.value() == doctest::Approx(0.5f)); // built-in default
 
     Style a, b;
     a.extends = "b";
@@ -54,8 +54,8 @@ TEST_CASE("Theme resolves extends and states") {
 TEST_CASE("Nine-slice emits nine quads with fixed corners") {
     UiFixture fx;
     Style card;
-    card.background.kind = Background::Kind::Shape;
-    card.background.radius = 24;
+    card.background->kind = Background::Kind::Shape;
+    card.background->radius = 24;
     fx.shared->theme.set("card", card);
     fx.canvas.root().add<Panel>({.style = "card", .width = Size::px(200), .height = Size::px(80)});
     fx.frame();
@@ -106,7 +106,7 @@ TEST_CASE("Label text sits above its button in the same layer") {
 TEST_CASE("Opacity and scale multiply down the tree") {
     UiFixture fx;
     Style solid;
-    solid.background.kind = Background::Kind::Shape;
+    solid.background->kind = Background::Kind::Shape;
     fx.shared->theme.set("solid", solid);
     auto parent = fx.canvas.root().add<Panel>({.style = "solid", .width = Size::px(200), .height = Size::px(200),
                                                .opacity = 0.5f});

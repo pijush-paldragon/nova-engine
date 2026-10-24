@@ -6,6 +6,7 @@
 #include <nova/core/handle.hpp>
 #include <nova/core/math.hpp>
 
+#include <optional>
 #include <string>
 
 namespace nova::ui {
@@ -88,8 +89,9 @@ struct UiSpec {
 struct PopupOptions {
     f32 dim = 0.6f;               // backdrop opacity (black)
     bool closeOnBackdrop = false; // a tap outside the popup closes it
-    Transition enter = Transition::Pop;
-    Transition exit = Transition::Fade;
+    // Unset: the layout file's root "enter"/"exit", else pop in and fade out.
+    std::optional<Transition> enter;
+    std::optional<Transition> exit;
     f32 duration = 0.2f;          // seconds, for enter and exit
 };
 

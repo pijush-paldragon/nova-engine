@@ -230,7 +230,7 @@ bool TextRun::refresh() {
 }
 
 Vec2 TextRun::size() {
-    if (!refresh()) return {};
+    if (string_.empty() || !refresh()) return {};
     int w = 0, h = 0;
     memory::DriverAllocScope driver; // may lay out lazily
     TTF_GetTextSize(text_, &w, &h);
@@ -238,7 +238,7 @@ Vec2 TextRun::size() {
 }
 
 void TextRun::draw(Vec2 topLeft, const ScreenFit& fit, Color color, f32 scale) {
-    if (!refresh() || color.a == 0) return;
+    if (string_.empty() || !refresh() || color.a == 0) return;
     if (!(color == color_)) {
         TTF_SetTextColor(text_, color.r, color.g, color.b, color.a);
         color_ = color;

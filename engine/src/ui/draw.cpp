@@ -5,6 +5,7 @@
 #include "ui/ui_backend.hpp"
 
 #include <nova/assets/assets.hpp>
+#include <nova/core/alloc_stats.hpp>
 #include <render/renderer_backend.hpp>
 #include <scene/services.hpp>
 #include <text/text_backend.hpp>
@@ -120,7 +121,9 @@ SpriteRegion resolveSprite(Assets& assets, std::string_view sprite, ScopeId scop
     if (sprite.size() > 4 && sprite.substr(sprite.size() - 4) == ".png") return {assets.texture(sprite, scope), {}};
     const size_t slash = sprite.rfind('/');
     if (slash == std::string_view::npos) {
-        logOnce("ui: sprite \"" + std::string(sprite) + "\" must be \"<atlas>/<region>\" or a .png path");
+        logOnceFor(LogKey::BadSprite, sprite, [&] {
+            return "ui: sprite \"" + std::string(sprite) + "\" must be \"<atlas>/<region>\" or a .png path";
+        });
         return {assets.fallbackTexture(), {}};
     }
     return assets.atlas(sprite.substr(0, slash), scope).region(sprite.substr(slash + 1));
@@ -129,15 +132,29 @@ SpriteRegion resolveSprite(Assets& assets, std::string_view sprite, ScopeId scop
 void prepareElement(Canvas::Impl& impl, Element& e, const UiShared& shared) {
     const Style& style = shared.theme.resolve(styleNameOf(e), VisualState::Normal);
     if (e.resolveDirty || e.themeGen != shared.theme.generation()) {
-        e.padding = e.spec.padding == Insets{} ? style.padding : e.spec.padding;
+        // An element's first look-ups (fonts, sounds, sprites, its text object) are setup, not
+        // gameplay: they happen once after it is added or its style changes.
+        memory::LoadingScope setup;
+        e.padding = e.spec.padding == Insets{} ? *style.padding : e.spec.padding;
         e.font = {};
-        if (carriesText(e.kind) && impl.services->assets) {
-            if (style.font.empty()) logOnce("ui: style \"" + std::string(styleNameOf(e)) + "\" has no font");
-            else e.font = impl.services->assets->font(style.font, style.fontSize, impl.scope);
+        Assets* assets = impl.services->assets;
+        if (carriesText(e.kind) && assets) {
+            if (style.font->empty()) {
+                logOnceFor(LogKey::NoFont, styleNameOf(e),
+                           [&] { return "ui: style \"" + std::string(styleNameOf(e)) + "\" has no font"; });
+            } else {
+                e.font = assets->font(*style.font, *style.fontSize, impl.scope);
+            }
         }
-        e.clickSound = style.clickSound.empty() || !impl.services->assets
-                           ? SoundHandle{}
-                           : impl.services->assets->sound(style.clickSound, impl.scope);
+        e.clickSound = style.clickSound->empty() || !assets ? SoundHandle{} : assets->sound(*style.clickSound, impl.scope);
+        for (int s = 0; s < 4; ++s) {
+            const Background& bg = *shared.theme.resolve(styleNameOf(e), VisualState(s)).background;
+            e.bgRegions[s] = bg.kind == Background::Kind::Sprite && assets ? resolveSprite(*assets, bg.sprite, impl.scope)
+                                                                           : SpriteRegion{};
+        }
+        if (carriesText(e.kind) && e.font.valid() && impl.services->text && !e.textRun) {
+            e.textRun.reset(new TextRun(*impl.services->text));
+        }
         e.region = {};
         if (impl.services->assets) {
             const std::string& sprite = e.kind == Kind::Image ? e.spec.sprite : e.spec.icon;
@@ -146,14 +163,9 @@ void prepareElement(Canvas::Impl& impl, Element& e, const UiShared& shared) {
         e.resolveDirty = false;
         e.themeGen = shared.theme.generation();
     }
-    if (carriesText(e.kind) && impl.services->text) {
-        if (e.spec.text.empty() || !e.font.valid()) {
-            e.textRun.reset();
-        } else {
-            if (!e.textRun) e.textRun.reset(new TextRun(*impl.services->text));
-            if (!e.textRun->set(e.font, e.spec.text)) e.textRun.reset();
-        }
-    }
+    // Empty text keeps its text object (drawn as nothing), so clearing and re-setting a label
+    // costs no allocation.
+    if (e.textRun && (!e.font.valid() || !e.textRun->set(e.font, e.spec.text))) e.textRun.reset();
 }
 
 Vec2 regionSize(const Canvas::Impl& impl, const SpriteRegion& r) {
@@ -256,14 +268,13 @@ struct Emitter {
     }
 };
 
-void emitBackground(Emitter& em, const UiShared& shared, const Canvas::Impl& impl, const Background& bg, Rect box,
-                    Color tint, f32 opacity, const Xf& xf) {
+void emitBackground(Emitter& em, const UiShared& shared, const Canvas::Impl& impl, const Background& bg,
+                    const SpriteRegion& r, Rect box, Color tint, f32 opacity, const Xf& xf) {
     if (bg.kind == Background::Kind::Shape) {
         const ShapeRegion& s = shared.shape(bg.radius, false);
         em.nineSlice(shared.shapes, s.src, Insets::all(s.insetTexels), Insets::all(s.insetDesign), box,
                      modulate(bg.color, tint, opacity), xf);
-    } else if (bg.kind == Background::Kind::Sprite && impl.services->assets) {
-        SpriteRegion r = resolveSprite(*impl.services->assets, bg.sprite, impl.scope);
+    } else if (bg.kind == Background::Kind::Sprite && r.texture.valid()) {
         Rect src = r.src.w > 0 ? r.src : Rect{0, 0, regionSize(impl, r).x, regionSize(impl, r).y};
         em.nineSlice(r.texture, src, bg.slice, bg.slice, box, modulate(bg.color, tint, opacity), xf);
     }
@@ -294,7 +305,7 @@ void emitImage(Emitter& em, const Canvas::Impl& impl, const Element& e, Rect box
 // and tint (fill, knob accent).
 void emitWidget(Emitter& em, const UiShared& shared, const Element& e, const Style& style, f32 opacity, const Xf& xf) {
     const Rect b = e.box;
-    const Background& bg = style.background;
+    const Background& bg = *style.background;
     auto shape = [&](Rect r, u8 radius, Color color) {
         const ShapeRegion& s = shared.shape(radius, false);
         em.nineSlice(shared.shapes, s.src, Insets::all(s.insetTexels), Insets::all(s.insetDesign), r,
@@ -319,7 +330,7 @@ void emitWidget(Emitter& em, const UiShared& shared, const Element& e, const Sty
         const f32 t = range != 0 ? std::clamp((e.spec.value - e.spec.min) / range, 0.f, 1.f) : 0;
         const f32 trackH = 12, cy = b.y + b.h * 0.5f;
         shape({b.x, cy - trackH * 0.5f, b.w, trackH}, 8, bg.color);
-        shape({b.x, cy - trackH * 0.5f, b.w * t, trackH}, 8, style.tint);
+        shape({b.x, cy - trackH * 0.5f, b.w * t, trackH}, 8, *style.tint);
         knob({b.x + b.w * t, cy}, std::min(40.f, b.h), Color::White);
     } else {
         const f32 v = std::clamp(e.shown, 0.f, 1.f);
@@ -331,7 +342,7 @@ void emitWidget(Emitter& em, const UiShared& shared, const Element& e, const Sty
             case FillDirection::Up: fill = {b.x, b.y + b.h * (1 - v), b.w, b.h * v}; break;
             case FillDirection::Down: fill.h = b.h * v; break;
         }
-        shape(fill, 8, style.tint);
+        shape(fill, 8, *style.tint);
     }
 }
 
@@ -364,9 +375,9 @@ void buildLayer(Canvas::Impl& impl, u16 layer, DrawLayer& out, std::vector<Frame
                                                                           : VisualState::Normal;
         const Style& style = shared.theme.resolve(styleNameOf(e), state);
         const f32 restScale = state == VisualState::Pressed
-                                  ? shared.theme.resolve(styleNameOf(e), VisualState::Normal).scale
-                                  : style.scale;
-        const f32 pressScale = shared.theme.resolve(styleNameOf(e), VisualState::Pressed).scale;
+                                  ? *shared.theme.resolve(styleNameOf(e), VisualState::Normal).scale
+                                  : *style.scale;
+        const f32 pressScale = *shared.theme.resolve(styleNameOf(e), VisualState::Pressed).scale;
 
         // This element's local transform (offset, then scale about its centre), under its parent's.
         // The pressed scale eases in over 0.08 s (pressAmount).
@@ -374,19 +385,19 @@ void buildLayer(Canvas::Impl& impl, u16 layer, DrawLayer& out, std::vector<Frame
         const Vec2 c = e.box.center() + e.spec.offset;
         const Vec2 localT = c + (e.spec.offset - c) * s;
         const Xf xf{f.xf.s * s, localT * f.xf.s + f.xf.t};
-        const f32 opacity = f.opacity * e.spec.opacity * style.opacity;
+        const f32 opacity = f.opacity * e.spec.opacity * *style.opacity;
 
         if (e.kind == Kind::Toggle || e.kind == Kind::Slider || e.kind == Kind::ProgressBar) {
             emitWidget(em, shared, e, style, opacity, xf);
         } else {
-            emitBackground(em, shared, impl, style.background, e.box, style.tint, opacity, xf);
+            emitBackground(em, shared, impl, *style.background, e.bgRegions[int(state)], e.box, *style.tint, opacity, xf);
         }
-        if (style.outlineColor) {
-            const ShapeRegion& o = shared.shape(style.background.radius, true);
+        if (style.outlineColor->has_value()) {
+            const ShapeRegion& o = shared.shape(style.background->radius, true);
             em.nineSlice(shared.shapes, o.src, Insets::all(o.insetTexels), Insets::all(o.insetDesign), e.box,
-                         modulate(*style.outlineColor, style.tint, opacity), xf);
+                         modulate(**style.outlineColor, *style.tint, opacity), xf);
         }
-        const Color tint = modulate(e.spec.tint, style.tint, opacity);
+        const Color tint = modulate(e.spec.tint, *style.tint, opacity);
         const Rect content = contentBox(e);
         if (e.kind == Kind::Image) emitImage(em, impl, e, e.box, tint, xf);
 
@@ -403,7 +414,7 @@ void buildLayer(Canvas::Impl& impl, u16 layer, DrawLayer& out, std::vector<Frame
                         content.h};
             if (text.x > 0) textArea.w = text.x;
         }
-        if (e.textRun) {
+        if (e.textRun && !e.textRun->empty()) {
             const Vec2 size = e.textRun->size();
             const TextAlignH align = e.kind == Kind::Button ? TextAlignH::Center : e.spec.textAlign;
             const f32 x = align == TextAlignH::Left   ? textArea.x
@@ -411,7 +422,7 @@ void buildLayer(Canvas::Impl& impl, u16 layer, DrawLayer& out, std::vector<Frame
                                                       : textArea.x + textArea.w - size.x;
             const Rect box{x, textArea.y + (textArea.h - size.y) * 0.5f, size.x, size.y};
             out.texts.push_back({e.textRun.get(), box, xf.apply({box.x, box.y}), xf.s,
-                                 modulate(style.textColor, Color::White, opacity)});
+                                 modulate(*style.textColor, Color::White, opacity)});
         }
 
         // Children in order: push in reverse so the first child is drawn first.
@@ -421,13 +432,22 @@ void buildLayer(Canvas::Impl& impl, u16 layer, DrawLayer& out, std::vector<Frame
     }
 }
 
+std::vector<Frame>& drawStack() {
+    static thread_local std::vector<Frame> stack;
+    return stack;
+}
+
 } // namespace
+
+void reserveDrawScratch(size_t n) {
+    if (drawStack().capacity() < n) drawStack().reserve(n);
+}
 
 void uiDraw(Canvas& canvas, RendererBackend& renderer, SpriteBatch& batch) {
     Canvas::Impl& impl = canvas.impl();
     if (!impl.services || !impl.services->ui) return;
     refreshLayout(impl); // a scene below the top one still re-lays out after a resize
-    static thread_local std::vector<Frame> stack;
+    std::vector<Frame>& stack = drawStack();
     if (stack.capacity() < impl.store.size()) stack.reserve(impl.store.size() * 2);
     DrawList& list = impl.drawList;
     if (list.layers.size() != impl.store.layerCount()) list.layers.resize(impl.store.layerCount());

@@ -91,7 +91,7 @@ TEST_CASE("Disabled buttons ignore touches") {
     fx.frame();
     fx.press(1, {200, 150});
     fx.beginUi();
-    CHECK(!fx.input.pointer(0)->consumedByUi);
+    CHECK(fx.input.pointer(0)->consumedByUi); // a disabled button still shields gameplay
     fx.endFrame();
     fx.release(1, {200, 150});
     fx.frame();

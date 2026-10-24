@@ -127,24 +127,24 @@ TEST_CASE("Theme file parses styles, states and extends") {
     REQUIRE(r.ok);
     CHECK(r.errors.empty());
     const Style& primary = theme.resolve("primary", VisualState::Normal);
-    CHECK(primary.background.kind == Background::Kind::Shape);
-    CHECK(primary.background.radius == 16);
-    CHECK(primary.background.color == Color::fromHex(0x3B82F6FF));
-    CHECK(primary.font == "fonts/Fredoka.ttf");
-    CHECK(primary.fontSize == 40);
-    CHECK(primary.padding == Insets{8, 16, 8, 16});
-    CHECK(primary.clickSound == "sfx/hit.wav");
-    CHECK(primary.outlineColor == std::optional<Color>(Color::Black));
-    CHECK(theme.resolve("primary", VisualState::Pressed).tint == Color::fromHex(0xD0D0D0FF));
-    CHECK(theme.resolve("primary", VisualState::Disabled).opacity == doctest::Approx(0.4f));
+    CHECK(primary.background.value().kind == Background::Kind::Shape);
+    CHECK(primary.background.value().radius == 16);
+    CHECK(primary.background.value().color == Color::fromHex(0x3B82F6FF));
+    CHECK(primary.font.value() == "fonts/Fredoka.ttf");
+    CHECK(primary.fontSize.value() == 40);
+    CHECK(primary.padding.value() == Insets{8, 16, 8, 16});
+    CHECK(primary.clickSound.value() == "sfx/hit.wav");
+    CHECK(primary.outlineColor.value() == std::optional<Color>(Color::Black));
+    CHECK(theme.resolve("primary", VisualState::Pressed).tint.value() == Color::fromHex(0xD0D0D0FF));
+    CHECK(theme.resolve("primary", VisualState::Disabled).opacity.value() == doctest::Approx(0.4f));
     const Style& danger = theme.resolve("danger", VisualState::Normal);
-    CHECK(danger.background.color == Color::fromHex(0xEF4444FF));
-    CHECK(danger.font == "fonts/Fredoka.ttf"); // from primary
+    CHECK(danger.background.value().color == Color::fromHex(0xEF4444FF));
+    CHECK(danger.font.value() == "fonts/Fredoka.ttf"); // from primary
     const Style& skin = theme.resolve("skin", VisualState::Normal);
-    CHECK(skin.background.kind == Background::Kind::Sprite);
-    CHECK(skin.background.sprite == "sprites/paddle");
-    CHECK(skin.background.slice == Insets{4, 8, 4, 8});
-    CHECK(skin.tint == Color::fromHex(0xFFFFFFCC));
+    CHECK(skin.background.value().kind == Background::Kind::Sprite);
+    CHECK(skin.background.value().sprite == "sprites/paddle");
+    CHECK(skin.background.value().slice == Insets{4, 8, 4, 8});
+    CHECK(skin.tint.value() == Color::fromHex(0xFFFFFFCC));
 }
 
 TEST_CASE("Unknown keys, wrong types and bad styles are reported with paths") {

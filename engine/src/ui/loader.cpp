@@ -1,6 +1,7 @@
 #include "ui/loader.hpp"
 
 #include "ui/canvas_impl.hpp"
+#include "ui/animation.hpp"
 #include "ui/draw.hpp"
 #include "ui/reload.hpp"
 
@@ -211,7 +212,12 @@ struct LayoutParser {
             const std::string_view key = str(k);
             if (key == "type" || key == "include" || key == "children") continue;
             if (key == "enter" || key == "exit") {
-                if (node.parent == -1 && out.size() == 1) r.choice(v, key, kTransitions, key == "enter" ? result.enter : result.exit);
+                if (node.parent == -1 && out.size() == 1) {
+                    Transition t = Transition::None;
+                    const size_t errors = r.errors.size();
+                    r.choice(v, key, kTransitions, t);
+                    if (r.errors.size() == errors) (key == "enter" ? result.enter : result.exit) = t;
+                }
                 continue;
             }
             if (!isKnown(key, std::begin(kElementKeys), std::end(kElementKeys))) {
@@ -409,32 +415,48 @@ void readState(yyjson_val* v, Reader& r, StateStyle& out) {
     }
 }
 
+// Reads into a style property; it counts as set only when the value parsed.
+template <class T, class Read>
+void readProp(Reader& r, Prop<T>& prop, Read&& read) {
+    T value = *prop;
+    const size_t errors = r.errors.size();
+    read(value);
+    if (r.errors.size() == errors) prop = std::move(value);
+}
+
 Style readStyle(yyjson_val* v, Reader& r) {
     Style s;
+    auto num = [&](yyjson_val* val, std::string_view key, Prop<f32>& p) { readProp(r, p, [&](f32& x) { r.number(val, key, x); }); };
+    auto col = [&](yyjson_val* val, std::string_view key, Prop<Color>& p) { readProp(r, p, [&](Color& x) { r.color(val, key, x); }); };
+    auto txt = [&](yyjson_val* val, std::string_view key, Prop<std::string>& p) { readProp(r, p, [&](std::string& x) { r.string(val, key, x); }); };
     size_t idx, max;
     yyjson_val *k, *val;
     yyjson_obj_foreach(v, idx, max, k, val) {
         const std::string_view key = str(k);
         if (!isKnown(key, std::begin(kStyleKeys), std::end(kStyleKeys))) r.error("unknown key \"" + std::string(key) + "\"");
         else if (key == "extends") r.string(val, key, s.extends);
-        else if (key == "background") readBackground(val, r, s.background);
+        else if (key == "background") readProp(r, s.background, [&](Background& b) { readBackground(val, r, b); });
         else if (key == "outline") {
+            if (yyjson_is_str(val) && str(val) == "none") {
+                s.outlineColor = std::optional<Color>();
+                continue;
+            }
             if (!yyjson_is_obj(val)) {
-                r.wrong(key, "an object like {\"color\": \"#000000\"}");
+                r.wrong(key, "an object like {\"color\": \"#000000\"} or \"none\"");
                 continue;
             }
             Color c = Color::Black;
             if (yyjson_val* color = yyjson_obj_get(val, "color")) r.color(color, "color", c);
-            s.outlineColor = c;
-            if (yyjson_val* width = yyjson_obj_get(val, "width")) r.number(width, "width", s.outlineWidth);
-        } else if (key == "tint") r.color(val, key, s.tint);
-        else if (key == "opacity") r.number(val, key, s.opacity);
-        else if (key == "scale") r.number(val, key, s.scale);
-        else if (key == "padding") r.insets(val, key, s.padding);
-        else if (key == "font") r.string(val, key, s.font);
-        else if (key == "fontSize") r.number(val, key, s.fontSize);
-        else if (key == "textColor") r.color(val, key, s.textColor);
-        else if (key == "clickSound") r.string(val, key, s.clickSound);
+            s.outlineColor = std::optional<Color>(c);
+            if (yyjson_val* width = yyjson_obj_get(val, "width")) num(width, "width", s.outlineWidth);
+        } else if (key == "tint") col(val, key, s.tint);
+        else if (key == "opacity") num(val, key, s.opacity);
+        else if (key == "scale") num(val, key, s.scale);
+        else if (key == "padding") readProp(r, s.padding, [&](Insets& x) { r.insets(val, key, x); });
+        else if (key == "font") txt(val, key, s.font);
+        else if (key == "fontSize") num(val, key, s.fontSize);
+        else if (key == "textColor") col(val, key, s.textColor);
+        else if (key == "clickSound") txt(val, key, s.clickSound);
         else if (key == "states") {
             if (!yyjson_is_obj(val)) {
                 r.wrong(key, "an object");
@@ -537,7 +559,7 @@ LoadResult loadTheme(std::string_view path, const FileReader& read, Theme& theme
             r.error("must be an object");
             continue;
         }
-        theme.set(name, readStyle(v, r));
+        theme.patch(name, readStyle(v, r)); // an existing style (e.g. "default") keeps what isn't given
     }
     if (!result.errors.empty()) result.firstError = result.errors.front();
     return result;
@@ -564,6 +586,13 @@ void Canvas::load(std::string_view file) {
     logLoadResult(result);
     if (!result.ok) return;
     impl.buildLayer(0, nodes, std::string(file), result);
+    // A screen can fade or slide in ("enter" on its root); "exit" only applies to popups.
+    LayerInfo& screen = impl.layerInfo[0];
+    screen.enter = result.enter.value_or(Transition::None);
+    screen.t = 0;
+    screen.phase = screen.enter != Transition::None ? LayerInfo::Phase::Entering : LayerInfo::Phase::Open;
+    applyTransition(impl, 0);
+    impl.prepareNow();
 }
 
 } // namespace nova::ui

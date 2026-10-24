@@ -2,27 +2,30 @@
 
 #include <nova/core/log.hpp>
 
+#include <unordered_set>
+
 namespace nova::ui {
 namespace {
 
 constexpr int kMaxExtends = 8;
 
-// Fields set in `over` replace `base`'s. A field counts as set when it differs from a default
-// Style, so a child style only overrides what it names.
+// Properties `over` sets replace `base`'s; states merge override by override.
 Style mergeOnto(const Style& base, const Style& over) {
-    static const Style defaults;
     Style s = base;
-    if (over.background.kind != Background::Kind::None) s.background = over.background;
-    if (over.outlineColor) s.outlineColor = over.outlineColor;
-    if (over.outlineWidth != defaults.outlineWidth) s.outlineWidth = over.outlineWidth;
-    if (!(over.tint == defaults.tint)) s.tint = over.tint;
-    if (over.opacity != defaults.opacity) s.opacity = over.opacity;
-    if (over.scale != defaults.scale) s.scale = over.scale;
-    if (!(over.padding == defaults.padding)) s.padding = over.padding;
-    if (!over.font.empty()) s.font = over.font;
-    if (over.fontSize != defaults.fontSize) s.fontSize = over.fontSize;
-    if (!(over.textColor == defaults.textColor)) s.textColor = over.textColor;
-    if (!over.clickSound.empty()) s.clickSound = over.clickSound;
+    auto take = [](auto& into, const auto& from) {
+        if (from.isSet()) into = *from;
+    };
+    take(s.background, over.background);
+    take(s.outlineColor, over.outlineColor);
+    take(s.outlineWidth, over.outlineWidth);
+    take(s.tint, over.tint);
+    take(s.opacity, over.opacity);
+    take(s.scale, over.scale);
+    take(s.padding, over.padding);
+    take(s.font, over.font);
+    take(s.fontSize, over.fontSize);
+    take(s.textColor, over.textColor);
+    take(s.clickSound, over.clickSound);
     auto mergeState = [](StateStyle& into, const StateStyle& from) {
         if (from.background) into.background = from.background;
         if (from.tint) into.tint = from.tint;
@@ -47,6 +50,14 @@ void applyState(Style& s, const StateStyle& st) {
 
 } // namespace
 
+bool firstReport(LogKey key, std::string_view name) {
+    static std::unordered_set<std::string, IdHashSv, std::equal_to<>> seen[size_t(LogKey::Count)];
+    auto& set = seen[size_t(key)];
+    if (set.find(name) != set.end()) return false;
+    set.emplace(name);
+    return true;
+}
+
 void logOnce(const std::string& message) {
 #if defined(NOVA_DEV_TOOLS)
     static thread_local std::unordered_map<std::string, bool> seen;
@@ -54,6 +65,17 @@ void logOnce(const std::string& message) {
 #else
     (void)message;
 #endif
+}
+
+void Theme::patch(const std::string& name, const Style& style) {
+    auto it = entries_.find(std::string_view(name));
+    if (it == entries_.end()) {
+        set(name, style);
+        return;
+    }
+    Style merged = mergeOnto(it->second.raw, style);
+    merged.extends = style.extends.empty() ? it->second.raw.extends : style.extends;
+    set(name, std::move(merged));
 }
 
 void Theme::set(std::string name, Style style) {
@@ -77,10 +99,16 @@ const Style& Theme::resolveRaw(std::string_view name, int depth) const {
         return merged_;
     }
     if (depth >= kMaxExtends) {
-        logOnce("ui: style extends cycle (or chain deeper than 8) at \"" + std::string(name) + "\"");
+        logOnceFor(LogKey::StyleExtends, name, [&] {
+            return "ui: style extends cycle (or chain deeper than 8) at \"" + std::string(name) + "\"";
+        });
         return raw;
     }
-    if (!has(raw.extends)) logOnce("ui: unknown style \"" + raw.extends + "\" (extended by \"" + std::string(name) + "\")");
+    if (!has(raw.extends)) {
+        logOnceFor(LogKey::UnknownStyle, raw.extends, [&] {
+            return "ui: unknown style \"" + raw.extends + "\" (extended by \"" + std::string(name) + "\")";
+        });
+    }
     Style base = resolveRaw(raw.extends, depth + 1);
     merged_ = mergeOnto(base, raw);
     return merged_;
@@ -89,7 +117,7 @@ const Style& Theme::resolveRaw(std::string_view name, int depth) const {
 const Style& Theme::resolve(std::string_view name, VisualState state) const {
     auto it = entries_.find(name);
     if (it == entries_.end()) {
-        logOnce("ui: unknown style \"" + std::string(name) + "\"");
+        logOnceFor(LogKey::UnknownStyle, name, [&] { return "ui: unknown style \"" + std::string(name) + "\""; });
         it = entries_.find(std::string_view("default"));
         if (it == entries_.end()) {
             static const Style fallback;

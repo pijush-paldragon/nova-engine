@@ -52,8 +52,9 @@ public:
 
     // False if the font is gone or the text could not be created.
     bool set(FontHandle font, std::string_view s);
-    // Size in design units.
+    // Size in design units ({0, 0} for empty text).
     Vec2 size();
+    bool empty() const { return string_.empty(); }
     // Draws with its top-left at `topLeft` (design units), scaled about that point.
     void draw(Vec2 topLeft, const ScreenFit& fit, Color color, f32 scale);
 

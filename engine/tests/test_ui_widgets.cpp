@@ -68,7 +68,7 @@ TEST_CASE("Progress bar animates toward its target") {
 TEST_CASE("Animations move, scale and fade without layout") {
     UiFixture fx;
     Style solid;
-    solid.background.kind = Background::Kind::Shape;
+    solid.background->kind = Background::Kind::Shape;
     fx.shared->theme.set("solid", solid);
     auto box = fx.canvas.root().add<Panel>({.style = "solid", .width = Size::px(100), .height = Size::px(100),
                                             .anchor = Anchor::Center});
