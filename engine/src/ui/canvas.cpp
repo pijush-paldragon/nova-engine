@@ -1,7 +1,10 @@
 #include "ui/canvas_impl.hpp"
+#include "ui/layout.hpp"
 #include "ui/ui_backend.hpp"
 
 #include <nova/core/log.hpp>
+#include <render/renderer_backend.hpp>
+#include <scene/services.hpp>
 
 namespace nova::ui {
 
@@ -71,6 +74,13 @@ namespace {
 
 Element* resolve(Canvas* canvas, UiHandle h) { return canvas ? canvas->impl().store.live(h) : nullptr; }
 
+// Resolves for a change that can alter size or position: the element's layer re-lays out.
+Element* resolveForLayout(Canvas* canvas, UiHandle h) {
+    Element* e = resolve(canvas, h);
+    if (e) canvas->impl().store.markDirty(e->layer);
+    return e;
+}
+
 } // namespace
 
 bool ElementRef::valid() const { return resolve(canvas_, h_) != nullptr; }
@@ -86,13 +96,13 @@ Rect ElementRef::box() const {
 }
 
 void ElementRef::setVisible(bool visible) {
-    if (Element* e = resolve(canvas_, h_)) e->spec.visible = visible;
+    if (Element* e = resolveForLayout(canvas_, h_)) e->spec.visible = visible;
 }
 void ElementRef::setEnabled(bool enabled) {
     if (Element* e = resolve(canvas_, h_)) e->spec.enabled = enabled;
 }
 void ElementRef::setStyle(std::string_view style) {
-    if (Element* e = resolve(canvas_, h_)) e->spec.style.assign(style.data(), style.size());
+    if (Element* e = resolveForLayout(canvas_, h_)) e->spec.style.assign(style.data(), style.size());
 }
 void ElementRef::setOpacity(f32 opacity) {
     if (Element* e = resolve(canvas_, h_)) e->spec.opacity = opacity;
@@ -111,13 +121,13 @@ void ElementRef::remove() {
 }
 
 void ImageRef::setSprite(std::string_view sprite) {
-    if (Element* e = resolve(canvas_, h_)) e->spec.sprite.assign(sprite.data(), sprite.size());
+    if (Element* e = resolveForLayout(canvas_, h_)) e->spec.sprite.assign(sprite.data(), sprite.size());
 }
 void LabelRef::setText(std::string_view text) {
-    if (Element* e = resolve(canvas_, h_)) e->spec.text.assign(text.data(), text.size());
+    if (Element* e = resolveForLayout(canvas_, h_)) e->spec.text.assign(text.data(), text.size());
 }
 void ButtonRef::setText(std::string_view text) {
-    if (Element* e = resolve(canvas_, h_)) e->spec.text.assign(text.data(), text.size());
+    if (Element* e = resolveForLayout(canvas_, h_)) e->spec.text.assign(text.data(), text.size());
 }
 void ToggleRef::setOn(bool on) {
     if (Element* e = resolve(canvas_, h_)) e->spec.on = on;
@@ -142,5 +152,12 @@ void ProgressRef::setValue(f32 value) {
 void uiAttach(Canvas& canvas, Services* services) { canvas.impl().services = services; }
 
 void uiFlush(Canvas& canvas) { canvas.impl().store.flush(); }
+
+void uiUpdate(Canvas& canvas, f32) {
+    Canvas::Impl& impl = canvas.impl();
+    if (!impl.services || !impl.services->renderer) return;
+    const RendererBackend& r = *impl.services->renderer;
+    layoutCanvas(impl.store, LayoutEnv{r.visibleRect(), r.safeArea(), r.pixelScale()}, nullptr, nullptr);
+}
 
 } // namespace nova::ui

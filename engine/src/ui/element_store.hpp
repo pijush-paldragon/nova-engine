@@ -18,7 +18,16 @@ struct Element {
     u16 layer = 0;
     bool removed = false; // queued for removal: no longer drawn, hit or found
 
-    Rect box{};           // laid-out box, design units
+    Rect box{};           // laid-out box, design units (before offset/scale, which are visual)
+    Vec2 measured{};      // content size for fit axes, padding included
+};
+
+// Screen metrics layout depends on.
+struct LayoutEnv {
+    Rect root;      // every layer's root box: the visible screen, design units
+    Rect safeArea;  // design units
+    f32 pixelScale = 1;
+    bool operator==(const LayoutEnv&) const = default;
 };
 
 // Transparent hashing, so lookups by string_view never build a std::string.
@@ -49,6 +58,15 @@ public:
     Element* live(UiHandle h);
     const Element* live(UiHandle h) const;
 
+    // Layout must re-run for this layer (size-affecting change, add/remove).
+    void markDirty(u16 layer) { layerDirty_[layer] = 1; }
+    bool dirty(u16 layer) const { return layerDirty_[layer] != 0; }
+    void clearDirty(u16 layer) { layerDirty_[layer] = 0; }
+
+    // Screen metrics of the last layout pass; a change re-lays out every layer.
+    const LayoutEnv& lastEnv() const { return lastEnv_; }
+    void setLastEnv(const LayoutEnv& env) { lastEnv_ = env; }
+
     // Searches layers from the top down.
     UiHandle find(std::string_view id) const;
     u32 size() const { return pool_.size(); }
@@ -71,8 +89,10 @@ private:
     HandlePool<Element, ElementTag> pool_;
     std::vector<UiHandle> layers_;
     std::vector<IdIndex> ids_;      // per layer
+    std::vector<u8> layerDirty_;    // per layer
     std::vector<UiHandle> pending_; // removed subtree roots, freed at flush
     std::vector<UiHandle> scratch_;
+    LayoutEnv lastEnv_{};
 };
 
 } // namespace nova::ui

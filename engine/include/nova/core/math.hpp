@@ -52,6 +52,7 @@ struct Rect {
     constexpr Vec2 center() const { return {x + w * 0.5f, y + h * 0.5f}; }
     constexpr f32 right() const { return x + w; }
     constexpr f32 bottom() const { return y + h; }
+    constexpr bool operator==(const Rect&) const = default;
 };
 
 struct Color {

@@ -16,6 +16,7 @@ UiHandle ElementStore::addLayer() {
     UiHandle h = pool_.insert(std::move(root));
     layers_.push_back(h);
     ids_.emplace_back();
+    layerDirty_.push_back(1);
     return h;
 }
 
@@ -36,6 +37,7 @@ UiHandle ElementStore::add(UiHandle parent, Kind kind, const UiSpec& spec) {
     else parentEl.firstChild = h;
     parentEl.lastChild = h;
     indexId(h, child);
+    markDirty(layer);
     return h;
 }
 
@@ -65,6 +67,7 @@ void ElementStore::remove(UiHandle h) {
         for (UiHandle c = el->firstChild; c.valid(); c = get(c)->next) scratch_.push_back(c);
     }
     pending_.push_back(h);
+    markDirty(get(h)->layer);
 }
 
 void ElementStore::unlink(UiHandle h) {
