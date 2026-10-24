@@ -129,6 +129,28 @@ SpriteRegion resolveSprite(Assets& assets, std::string_view sprite, ScopeId scop
     return assets.atlas(sprite.substr(0, slash), scope).region(sprite.substr(slash + 1));
 }
 
+// The text an element shows: "@key" is translated (with its arguments), "@@x" is a literal "@x".
+void renderText(Canvas::Impl& impl, Element& e) {
+    const std::string& raw = e.spec.text;
+    if (raw.size() >= 2 && raw[0] == '@' && raw[1] == '@') {
+        e.rendered.assign(raw, 1);
+        return;
+    }
+    if (raw.empty() || raw[0] != '@' || !impl.services->text) {
+        e.rendered.assign(raw);
+        return;
+    }
+    const Localization& lang = impl.services->text->lang();
+    if (!e.keyDirty && e.langGen == lang.generation()) return;
+    char buf[1024];
+    std::array<FormatArg, KeyArgs::kMax> args;
+    const size_t n = e.keyArgs.view(args);
+    const size_t len = lang.formatArgs(buf, std::string_view(raw).substr(1), std::span<const FormatArg>(args.data(), n));
+    e.rendered.assign(buf, len);
+    e.langGen = lang.generation();
+    e.keyDirty = false;
+}
+
 void prepareElement(Canvas::Impl& impl, Element& e, const UiShared& shared) {
     const Style& style = shared.theme.resolve(styleNameOf(e), VisualState::Normal);
     if (e.resolveDirty || e.themeGen != shared.theme.generation()) {
@@ -163,9 +185,10 @@ void prepareElement(Canvas::Impl& impl, Element& e, const UiShared& shared) {
         e.resolveDirty = false;
         e.themeGen = shared.theme.generation();
     }
+    if (carriesText(e.kind)) renderText(impl, e);
     // Empty text keeps its text object (drawn as nothing), so clearing and re-setting a label
     // costs no allocation.
-    if (e.textRun && (!e.font.valid() || !e.textRun->set(e.font, e.spec.text))) e.textRun.reset();
+    if (e.textRun && (!e.font.valid() || !e.textRun->set(e.font, e.rendered))) e.textRun.reset();
 }
 
 Vec2 regionSize(const Canvas::Impl& impl, const SpriteRegion& r) {
@@ -201,13 +224,16 @@ void refreshLayout(Canvas::Impl& impl) {
     if (!impl.services || !impl.services->renderer || !impl.services->ui) return;
     const UiShared& shared = *impl.services->ui;
     ElementStore& store = impl.store;
-    const bool themeChanged = impl.themeGen != shared.theme.generation();
+    const u32 langGen = impl.services->text ? impl.services->text->lang().generation() : 0;
+    // A new theme or language: every element re-resolves (fonts follow the language too).
+    const bool themeChanged = impl.themeGen != shared.theme.generation() || impl.langGen != langGen;
     store.forEach([&](UiHandle, Element& e) {
         if (themeChanged || e.resolveDirty || store.dirty(e.layer)) prepareElement(impl, e, shared);
     });
     if (themeChanged) {
         for (u16 l = 0; l < store.layerCount(); ++l) store.markDirty(l);
         impl.themeGen = shared.theme.generation();
+        impl.langGen = langGen;
     }
     const RendererBackend& r = *impl.services->renderer;
     layoutCanvas(store, LayoutEnv{r.visibleRect(), r.safeArea(), r.pixelScale()}, &measureElement, &impl);

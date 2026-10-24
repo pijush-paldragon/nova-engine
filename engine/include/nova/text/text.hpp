@@ -25,17 +25,31 @@ struct TextLabel {
     u8 layer = 0;
     bool visible = true;
 
+    // Literal text.
     void set(std::string_view s) {
-        if (s == text_) return;
+        if (key_.empty() && s == text_) return;
+        key_.clear();
         text_.assign(s.data(), s.size()); // reuses capacity: no allocation for same-length updates
         ++revision_;
     }
+    // A translation key with {placeholder} values; re-renders when the language changes.
+    void setKey(std::string_view key, std::initializer_list<FormatArg> args = {}) {
+        const bool sameKey = key == key_;
+        if (!sameKey) key_.assign(key.data(), key.size());
+        if (args_.assign(args) || !sameKey) ++revision_;
+    }
     const std::string& string() const { return text_; }
+    // What is drawn: the literal text, or the translation of the key.
+    const std::string& displayed() const { return key_.empty() ? text_ : shown_; }
     u32 revision() const { return revision_; }
 
-    // Managed through set(); public only so TextLabel stays an aggregate (designated initializers).
+    // Managed through set()/setKey(); public only so TextLabel stays an aggregate (designated initializers).
     std::string text_;
     u32 revision_ = 0;
+    std::string key_;
+    KeyArgs args_;
+    std::string shown_; // the rendered translation
+    u32 langGen_ = 0;
 };
 
 // Game-facing text services.

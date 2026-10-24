@@ -2,6 +2,10 @@
 
 #include "ui/draw.hpp"
 
+#include <nova/text/text.hpp>
+#include <text/localization_impl.hpp>
+#include <text/text_backend.hpp>
+
 #include <nova/core/alloc_stats.hpp>
 #include <scene/services.hpp>
 
@@ -134,6 +138,19 @@ void pollReload(Canvas::Impl& impl, f32 dt) {
             LoadResult r = loadTheme(shared.themeFiles.front(), sourceFileReader(), shared.theme);
             recordThemeStamps(shared, shared.themeFiles);
             impl.devError = r.ok && r.errors.empty() ? std::string() : r.firstError;
+        }
+    }
+    // The active language file (shared by every canvas, like the theme).
+    if (impl.services && impl.services->text) {
+        Localization::Impl& lang = impl.services->text->lang().impl();
+        const std::string path = "text/" + lang.info().tag + ".json";
+        const i64 stamp = stampOf(path);
+        if (lang.watchedPath != path) {
+            lang.watchedPath = path;
+            lang.watchedStamp = stamp;
+        } else if (stamp != lang.watchedStamp) {
+            lang.watchedStamp = stamp;
+            if (!lang.reloadCurrent(sourceFileReader())) impl.devError = path + ": could not be reloaded";
         }
     }
     for (u16 layer = 0; layer < impl.store.layerCount() && layer < impl.layerFiles.size(); ++layer) {

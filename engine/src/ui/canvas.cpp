@@ -172,6 +172,8 @@ void LabelRef::setText(std::string_view text) {
     if (!e || e->spec.text == text) return; // unchanged: no relayout
     canvas_->impl().store.markDirty(e->layer);
     e->spec.text.assign(text.data(), text.size());
+    e->keyArgs = KeyArgs{};
+    e->keyDirty = true;
     remember(canvas_, *e, [&](Remembered& r) { keep(r.text, text); });
 }
 void ButtonRef::setText(std::string_view text) {
@@ -179,8 +181,33 @@ void ButtonRef::setText(std::string_view text) {
     if (!e || e->spec.text == text) return; // unchanged: no relayout
     canvas_->impl().store.markDirty(e->layer);
     e->spec.text.assign(text.data(), text.size());
+    e->keyArgs = KeyArgs{};
+    e->keyDirty = true;
     remember(canvas_, *e, [&](Remembered& r) { keep(r.text, text); });
 }
+namespace {
+
+// "@key" in spec.text plus arguments; re-renders only when the key or a value changed.
+void applyKey(Canvas* canvas, UiHandle h, std::string_view key, std::initializer_list<FormatArg> args) {
+    Element* e = resolve(canvas, h);
+    if (!e) return;
+    const bool sameKey = e->spec.text.size() == key.size() + 1 && e->spec.text[0] == '@' &&
+                         std::string_view(e->spec.text).substr(1) == key;
+    if (!sameKey) {
+        e->spec.text.assign("@");
+        e->spec.text.append(key.data(), key.size());
+    }
+    const bool argsChanged = e->keyArgs.assign(args);
+    if (sameKey && !argsChanged) return;
+    e->keyDirty = true;
+    canvas->impl().store.markDirty(e->layer);
+}
+
+} // namespace
+
+void LabelRef::setKey(std::string_view key, std::initializer_list<FormatArg> args) { applyKey(canvas_, h_, key, args); }
+void ButtonRef::setKey(std::string_view key, std::initializer_list<FormatArg> args) { applyKey(canvas_, h_, key, args); }
+
 void ToggleRef::setOn(bool on) {
     if (Element* e = resolve(canvas_, h_)) {
         e->spec.on = on;

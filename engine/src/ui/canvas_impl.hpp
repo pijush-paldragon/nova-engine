@@ -94,6 +94,7 @@ struct Canvas::Impl {
     ScopeId scope = kGlobalScope;                   // the owning scene's asset scope
     DrawList drawList;                              // last frame's draw commands
     u32 themeGen = 0;                               // theme generation the elements were resolved with
+    u32 langGen = 0;                                // language generation likewise
     std::vector<std::string> layerSources{"code"}; // what built each layer, for messages
     std::vector<std::vector<std::string>> layerFiles{{}}; // files each layer was loaded from (reload)
     FileReader reader;                              // where load() reads files (assets by default)

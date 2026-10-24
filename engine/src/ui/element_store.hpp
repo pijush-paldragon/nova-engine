@@ -3,6 +3,7 @@
 #include <nova/audio/audio.hpp>
 #include <nova/core/handle.hpp>
 #include <nova/render/types.hpp>
+#include <nova/text/localization.hpp>
 #include <nova/text/text.hpp>
 #include <nova/ui/types.hpp>
 
@@ -49,6 +50,11 @@ struct Element {
     SoundHandle clickSound;   // from the style
     SpriteRegion bgRegions[4]{}; // sprite backgrounds per VisualState, resolved once
     std::unique_ptr<TextRun, TextRunDeleter> textRun;
+    // Text as shown: spec.text, or its translation when spec.text is "@key" (with keyArgs).
+    std::string rendered;
+    KeyArgs keyArgs;
+    u32 langGen = 0;   // Localization generation `rendered` was made for
+    bool keyDirty = true;
 };
 
 // Screen metrics layout depends on.

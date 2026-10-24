@@ -196,7 +196,18 @@ void TextBackend::collectAndDraw(World& world, const ScreenFit& fit, Vec2 viewOr
         TextCache* cache = registry.try_get<TextCache>(e);
         if (!cache) cache = &registry.emplace<TextCache>(e);
 
-        const std::string& s = label.string();
+        // Keyed labels render their translation again when the key, a value or the language changes.
+        bool retext = false;
+        if (!label.key_.empty() && (label.langGen_ != lang_->generation() || cache->revision != label.revision())) {
+            char buf[1024];
+            std::array<FormatArg, KeyArgs::kMax> args;
+            const size_t n = label.args_.view(args);
+            const size_t len = lang_->formatArgs(buf, label.key_, std::span<const FormatArg>(args.data(), n));
+            label.shown_.assign(buf, len);
+            label.langGen_ = lang_->generation();
+            retext = true;
+        }
+        const std::string& s = label.displayed();
         if (!cache->text || !(cache->font == label.font)) {
             {
                 memory::DriverAllocScope driver; // SDL_ttf layout + GPU glyph uploads
@@ -206,7 +217,7 @@ void TextBackend::collectAndDraw(World& world, const ScreenFit& fit, Vec2 viewOr
             gLiveTexts.fetch_add(1, std::memory_order_relaxed);
             cache->color = {0, 0, 0, 0};
             ++rebuilds_;
-        } else if (cache->revision != label.revision() || cache->fontGeneration != impl_->fontGeneration) {
+        } else if (retext || cache->revision != label.revision() || cache->fontGeneration != impl_->fontGeneration) {
             memory::DriverAllocScope driver;
             TTF_SetTextString(cache->text.get(), s.data(), s.size());
             ++rebuilds_;

@@ -43,6 +43,10 @@ struct Localization::Impl {
     std::function<void(std::string_view)> onChange; // e.g. save the choice (set by the App)
 
     void setReader(TextFileReader r);
+    // Live reload (dev builds): re-reads the current language file through `read`.
+    bool reloadCurrent(const TextFileReader& read);
+    std::string watchedPath; // the file live reload watches, and its last modification time
+    i64 watchedStamp = -1;
     const LanguageInfo& info() const { return info_; }
     const Entry* find(std::string_view key) const;
     // Parses text/<lang>.json into `out`; false if the file is missing or unreadable.

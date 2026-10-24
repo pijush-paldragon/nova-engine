@@ -6,6 +6,7 @@
 #include <nova/core/log.hpp>
 #include <platform/asset_io.hpp>
 
+#include <SDL3/SDL_filesystem.h>
 #include <SDL3/SDL_iostream.h>
 #include <SDL3/SDL_stdinc.h>
 #include <yyjson.h>
@@ -16,7 +17,20 @@
 #include <unordered_set>
 
 namespace nova {
+namespace detail {
+const char* devAssetSourceDir(); // ui/reload.cpp
+}
+
 namespace {
+
+// Modification time of a source asset (dev live reload), -1 when there is none.
+i64 sourceStamp(const std::string& rel) {
+    const char* dir = detail::devAssetSourceDir();
+    if (!dir || !*dir) return -1;
+    const std::string path = std::string(dir) + rel;
+    SDL_PathInfo info{};
+    return SDL_GetPathInfo(path.c_str(), &info) ? i64(info.modify_time) : -1;
+}
 
 std::string_view str(yyjson_val* v) { return {yyjson_get_str(v), yyjson_get_len(v)}; }
 
@@ -90,7 +104,7 @@ void putArg(Writer& w, const FormatArg& a) {
 
 // Fills {name} placeholders in one pass ({{ and }} are literal braces). Values are inserted as
 // they are; a value's own braces are never substituted again.
-size_t fill(std::span<char> out, std::string_view tmpl, std::initializer_list<FormatArg> args, const FormatArg* extra) {
+size_t fill(std::span<char> out, std::string_view tmpl, std::span<const FormatArg> args, const FormatArg* extra) {
     Writer w{out};
     for (size_t i = 0; i < tmpl.size(); ++i) {
         const char c = tmpl[i];
@@ -211,6 +225,22 @@ bool Localization::Impl::loadFile(std::string_view lang, Table& out, LanguageInf
     return true;
 }
 
+bool Localization::Impl::reloadCurrent(const TextFileReader& read) {
+    TextFileReader saved = std::move(reader);
+    reader = read;
+    Table table;
+    LanguageInfo langInfo;
+    const bool ok = loadFile(info_.tag, table, &langInfo);
+    if (ok) {
+        if (info_.tag == "en") english = table;
+        current = std::move(table);
+        info_ = std::move(langInfo);
+        ++generation;
+    }
+    reader = std::move(saved);
+    return ok;
+}
+
 TextFileReader assetTextReader() {
     return [](std::string_view path) -> std::optional<std::string> {
         SDL_IOStream* io = openAsset(path);
@@ -242,7 +272,51 @@ std::string_view Localization::get(std::string_view key) const {
 }
 
 size_t Localization::format(std::span<char> out, std::string_view key, std::initializer_list<FormatArg> args) const {
+    return fill(out, get(key), std::span<const FormatArg>(args.begin(), args.size()), nullptr);
+}
+
+size_t Localization::formatArgs(std::span<char> out, std::string_view key, std::span<const FormatArg> args) const {
     return fill(out, get(key), args, nullptr);
+}
+
+bool KeyArgs::assign(std::initializer_list<FormatArg> args) {
+    KeyArgs next;
+    for (const FormatArg& a : args) {
+        if (next.count == kMax) break;
+        Stored& s = next.items[next.count++];
+        const size_t n = std::min(a.name.size(), sizeof s.name - 1);
+        std::memcpy(s.name, a.name.data(), n);
+        if (const i64* i = std::get_if<i64>(&a.value)) {
+            s.kind = 0;
+            s.i = *i;
+        } else if (const f64* f = std::get_if<f64>(&a.value)) {
+            s.kind = 1;
+            s.f = *f;
+        } else {
+            s.kind = 2;
+            const std::string_view v = std::get<std::string_view>(a.value);
+            std::memcpy(s.s, v.data(), std::min(v.size(), sizeof s.s - 1));
+        }
+    }
+    bool changed = next.count != count;
+    for (size_t i = 0; i < next.count && !changed; ++i) {
+        const Stored &a = items[i], &b = next.items[i];
+        changed = std::strcmp(a.name, b.name) != 0 || a.kind != b.kind || a.i != b.i || a.f != b.f ||
+                  std::strcmp(a.s, b.s) != 0;
+    }
+    if (changed) *this = next;
+    return changed;
+}
+
+size_t KeyArgs::view(std::array<FormatArg, kMax>& out) const {
+    for (size_t i = 0; i < count; ++i) {
+        const Stored& s = items[i];
+        out[i].name = s.name;
+        if (s.kind == 0) out[i].value = s.i;
+        else if (s.kind == 1) out[i].value = s.f;
+        else out[i].value = std::string_view(s.s);
+    }
+    return count;
 }
 
 size_t Localization::plural(std::span<char> out, std::string_view key, i64 count,
@@ -255,9 +329,10 @@ size_t Localization::plural(std::span<char> out, std::string_view key, i64 count
         const auto& e = it->second;
         return (e.formMask & (1u << u32(c))) ? &e.forms[size_t(c)] : &e.forms[size_t(PluralCategory::Other)];
     };
-    if (const std::string* s = pick(impl_->current, impl_->info_.tag)) return fill(out, *s, args, &countArg);
-    if (const std::string* s = pick(impl_->english, "en")) return fill(out, *s, args, &countArg);
-    return fill(out, get(key), args, &countArg);
+    const std::span<const FormatArg> list(args.begin(), args.size());
+    if (const std::string* s = pick(impl_->current, impl_->info_.tag)) return fill(out, *s, list, &countArg);
+    if (const std::string* s = pick(impl_->english, "en")) return fill(out, *s, list, &countArg);
+    return fill(out, get(key), list, &countArg);
 }
 
 bool Localization::setLanguage(std::string_view lang) {
@@ -270,6 +345,9 @@ bool Localization::setLanguage(std::string_view lang) {
     if (lang == "en") impl.english = table;
     impl.current = std::move(table);
     impl.info_ = std::move(langInfo);
+    // Live reload watches this file from the version just loaded.
+    impl.watchedPath = "text/" + impl.info_.tag + ".json";
+    impl.watchedStamp = sourceStamp(impl.watchedPath);
     if (impl.available.empty()) {
         // text/languages.json lists the languages (SDL can't list APK asset folders).
         if (std::optional<std::string> list = impl.reader("text/languages.json")) {

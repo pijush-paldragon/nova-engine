@@ -4,6 +4,7 @@
 // cheap to copy, and safe after the element is gone (every call becomes a no-op).
 
 #include <nova/ecs/tween.hpp>
+#include <nova/text/localization.hpp>
 #include <nova/ui/types.hpp>
 
 #include <functional>
@@ -95,13 +96,17 @@ public:
 class LabelRef : public ElementRef {
 public:
     using ElementRef::ElementRef;
+    // Literal text; text starting with "@" is a translation key ("@@" for a literal "@").
     void setText(std::string_view text);
+    // A translation key with {placeholder} values; re-renders when the language changes.
+    void setKey(std::string_view key, std::initializer_list<FormatArg> args = {});
 };
 
 class ButtonRef : public ElementRef {
 public:
     using ElementRef::ElementRef;
     void setText(std::string_view text);
+    void setKey(std::string_view key, std::initializer_list<FormatArg> args = {});
     // Bound to the element's id when it has one, else to this element.
     void onClick(std::function<void()> fn);
 };
