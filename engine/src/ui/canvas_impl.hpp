@@ -66,6 +66,16 @@ struct Remembered {
     std::optional<bool> on, visible, enabled;
 };
 
+// Per-layer popup state (layer 0, the screen, uses none of it).
+struct LayerInfo {
+    enum class Phase : u8 { Open, Entering, Exiting };
+    PopupOptions options;
+    UiHandle backdrop, content;
+    Phase phase = Phase::Open;
+    f32 t = 0;
+    std::function<void()> onClose;
+};
+
 // A pointer the UI owns, from press until release.
 struct Touch {
     u64 pointer = 0;
@@ -86,6 +96,13 @@ struct Canvas::Impl {
     std::vector<std::vector<i64>> layerStamps;      // modification times of layerFiles (live reload)
     f32 reloadTimer = 0;
     std::string devError;                           // live reload: the edit that failed, until fixed
+    std::vector<LayerInfo> layerInfo{LayerInfo{}};  // per layer; index 0 is the screen
+
+    // Popups (canvas.cpp).
+    u16 createPopupLayer(const PopupOptions& options);
+    void closeLayer(u16 layer);
+    void finishLayer(u16 layer); // removes it and runs onClose
+    u16 layerOfContent(UiHandle content) const; // 0 when not a popup root
     std::unordered_set<std::string> reported;      // "kind:id" already logged as missing
 
     std::unordered_map<std::string, BindingPtr, IdHash, std::equal_to<>> idBindings;

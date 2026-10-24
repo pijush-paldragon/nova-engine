@@ -99,6 +99,61 @@ Animator& Animator::onDone(std::function<void()> fn) {
 }
 #undef NOVA_ANIM_SLOT
 
+void applyTransition(Canvas::Impl& impl, u16 layer) {
+    if (layer == 0 || layer >= impl.layerInfo.size()) return;
+    const LayerInfo& info = impl.layerInfo[layer];
+    const bool exiting = info.phase == LayerInfo::Phase::Exiting;
+    const Transition kind = exiting ? info.options.exit : info.options.enter;
+    const f32 dur = info.options.duration;
+    f32 k = 1; // 0 = hidden, 1 = fully shown
+    if (info.phase != LayerInfo::Phase::Open && kind != Transition::None && dur > 0) {
+        const f32 t = std::clamp(info.t / dur, 0.f, 1.f);
+        k = exiting ? 1 - t : t;
+    } else if (exiting) {
+        k = 0;
+    }
+    if (Element* backdrop = impl.store.live(info.backdrop)) backdrop->spec.opacity = info.options.dim * k;
+    Element* content = impl.store.live(info.content);
+    if (!content) return;
+    content->scale = 1;
+    content->spec.opacity = 1;
+    content->spec.offset = {};
+    if (info.phase == LayerInfo::Phase::Open) return;
+    const Rect screen = impl.store.lastEnv().root;
+    switch (kind) {
+        case Transition::None: break;
+        case Transition::Fade: content->spec.opacity = k; break;
+        case Transition::Pop:
+            // Entering overshoots (OutBack); leaving shrinks straight back.
+            content->scale = 0.85f + 0.15f * (exiting ? k : ease(Ease::OutBack, k));
+            content->spec.opacity = k;
+            break;
+        case Transition::SlideUp: content->spec.offset = {0, screen.h * (1 - ease(Ease::OutQuad, k))}; break;
+        case Transition::SlideDown: content->spec.offset = {0, -screen.h * (1 - ease(Ease::OutQuad, k))}; break;
+        case Transition::SlideLeft: content->spec.offset = {screen.w * (1 - ease(Ease::OutQuad, k)), 0}; break;
+        case Transition::SlideRight: content->spec.offset = {-screen.w * (1 - ease(Ease::OutQuad, k)), 0}; break;
+    }
+}
+
+void updateTransitions(Canvas::Impl& impl, f32 dt) {
+    // Top-down, so finishing a layer only shifts layers already visited.
+    for (u16 layer = u16(impl.layerInfo.size()); layer-- > 1;) {
+        LayerInfo& info = impl.layerInfo[layer];
+        if (info.phase == LayerInfo::Phase::Open) continue;
+        info.t += dt;
+        const bool instant = info.options.duration <= 0 ||
+                             (info.phase == LayerInfo::Phase::Exiting ? info.options.exit : info.options.enter) == Transition::None;
+        if (info.phase == LayerInfo::Phase::Entering && (instant || info.t >= info.options.duration)) {
+            info.phase = LayerInfo::Phase::Open;
+            info.t = 0;
+        } else if (info.phase == LayerInfo::Phase::Exiting && (instant || info.t >= info.options.duration)) {
+            impl.finishLayer(layer);
+            continue;
+        }
+        applyTransition(impl, layer);
+    }
+}
+
 void updateAnimations(Canvas::Impl& impl, f32 dt) {
     for (Anim& a : impl.anims) {
         if (!a.active) continue;

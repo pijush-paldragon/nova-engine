@@ -4,6 +4,7 @@
 #include "ui/reload.hpp"
 #include "ui/ui_backend.hpp"
 
+#include <nova/core/alloc_stats.hpp>
 #include <nova/core/log.hpp>
 
 #include <algorithm>
@@ -225,23 +226,40 @@ std::string_view Canvas::devError() const { return impl_->devError; }
 
 void uiUpdate(Canvas& canvas, f32 dt) {
     pollReload(canvas.impl(), dt);
+    updateTransitions(canvas.impl(), dt);
     updateAnimations(canvas.impl(), dt);
     refreshLayout(canvas.impl());
 }
+
+namespace {
+
+// A popup's root is centred unless it chose an anchor, and blocks touches to its backdrop (a tap
+// on the popup's own background must not count as a tap outside it).
+UiSpec popupRootSpec(UiSpec spec) {
+    if (spec.anchor == Anchor::TopLeft && spec.offset == Vec2{}) spec.anchor = Anchor::Center;
+    spec.blocksInput = true;
+    return spec;
+}
+
+} // namespace
 
 void Canvas::Impl::buildLayer(u16 layer, const std::vector<NodeSpec>& nodes, std::string source,
                               const LoadResult& result) {
     const UiHandle root = store.layerRoot(layer);
     std::vector<UiHandle> old;
     store.forEachChild(root, [&](UiHandle h, const Element& e) {
-        if (!e.removed) old.push_back(h);
+        if (!e.removed && !e.backdrop) old.push_back(h);
     });
     for (UiHandle h : old) store.remove(h);
     std::vector<UiHandle> handles(nodes.size());
     for (size_t i = 0; i < nodes.size(); ++i) {
         const NodeSpec& n = nodes[i];
         const UiHandle parent = n.parent < 0 ? root : handles[size_t(n.parent)];
-        handles[i] = store.add(parent, n.kind, n.spec);
+        handles[i] = store.add(parent, n.kind, layer > 0 && i == 0 ? popupRootSpec(n.spec) : n.spec);
+    }
+    if (layer > 0 && !handles.empty()) {
+        layerInfo[layer].content = handles[0];
+        applyTransition(*this, layer); // a reloaded popup keeps its transition state
     }
     if (layerSources.size() <= layer) layerSources.resize(layer + 1u);
     if (layerFiles.size() <= layer) layerFiles.resize(layer + 1u);
@@ -249,6 +267,146 @@ void Canvas::Impl::buildLayer(u16 layer, const std::vector<NodeSpec>& nodes, std
     layerFiles[layer] = result.files;
     recordLayerStamps(*this, layer);
 }
+
+// ---- Popups ----------------------------------------------------------------------------------
+
+u16 Canvas::Impl::createPopupLayer(const PopupOptions& options) {
+    // A finger already down belongs to what was under it; nothing beneath a new popup may click.
+    for (Touch& t : touches) {
+        if (!t.active) continue;
+        t.cancelled = true;
+        if (Element* e = store.live(t.owner)) e->pressed = false;
+    }
+    store.addLayer();
+    const u16 layer = u16(store.layerCount() - 1);
+    layerSources.resize(layer + 1u, "code");
+    layerFiles.resize(layer + 1u);
+    if (layerStamps.size() > layer) layerStamps.resize(layer);
+    layerInfo.resize(layer + 1u);
+    LayerInfo& info = layerInfo[layer];
+    info = LayerInfo{};
+    info.options = options;
+    const bool animated = options.enter != Transition::None && options.duration > 0;
+    info.phase = animated ? LayerInfo::Phase::Entering : LayerInfo::Phase::Open;
+    UiSpec backdrop{.style = "ui-backdrop", .width = Size::fill(), .height = Size::fill(), .blocksInput = true};
+    const UiHandle h = store.add(store.layerRoot(layer), options.closeOnBackdrop ? Kind::Button : Kind::Panel, backdrop);
+    store.get(h)->backdrop = true;
+    info.backdrop = h;
+    if (options.closeOnBackdrop) {
+        bind(h, [this, h](Binding& b) {
+            b.click = [this, h] {
+                if (const Element* e = store.live(h)) closeLayer(e->layer);
+            };
+        });
+    }
+    return layer;
+}
+
+void Canvas::Impl::closeLayer(u16 layer) {
+    if (layer == 0 || layer >= layerInfo.size()) return;
+    LayerInfo& info = layerInfo[layer];
+    if (info.phase == LayerInfo::Phase::Exiting) return;
+    const f32 dur = info.options.duration;
+    // Start the exit from wherever the entrance got to.
+    const f32 shown = info.phase == LayerInfo::Phase::Entering && dur > 0 ? std::min(info.t / dur, 1.f) : 1.f;
+    info.phase = LayerInfo::Phase::Exiting;
+    info.t = (1 - shown) * dur;
+    for (Touch& t : touches) {
+        const Element* e = store.get(t.owner);
+        if (t.active && e && e->layer == layer) t.cancelled = true;
+    }
+}
+
+void Canvas::Impl::finishLayer(u16 layer) {
+    std::function<void()> done = std::move(layerInfo[layer].onClose);
+    store.eraseLayer(layer);
+    layerInfo.erase(layerInfo.begin() + layer);
+    layerSources.erase(layerSources.begin() + layer);
+    layerFiles.erase(layerFiles.begin() + layer);
+    if (layer < layerStamps.size()) layerStamps.erase(layerStamps.begin() + layer);
+    if (done) done();
+}
+
+u16 Canvas::Impl::layerOfContent(UiHandle content) const {
+    const Element* e = store.live(content);
+    return e && e->layer > 0 && layerInfo[e->layer].content == content ? e->layer : 0;
+}
+
+PopupRef Canvas::push(std::string_view file, PopupOptions options) {
+    memory::LoadingScope loading;
+    Impl& impl = *impl_;
+    if (!impl.reader) impl.reader = assetFileReader();
+    const Theme* theme = impl.services && impl.services->ui ? &impl.services->ui->theme : nullptr;
+    std::vector<NodeSpec> nodes;
+    LoadResult result = loadLayout(file, impl.reader, theme, nodes);
+    logLoadResult(result);
+    if (!result.ok) return {};
+    const u16 layer = impl.createPopupLayer(options);
+    impl.buildLayer(layer, nodes, std::string(file), result);
+    applyTransition(impl, layer);
+    return PopupRef(this, impl.layerInfo[layer].content);
+}
+
+PopupRef Canvas::push(const UiSpec& root, PopupOptions options) {
+    Impl& impl = *impl_;
+    const u16 layer = impl.createPopupLayer(options);
+    const UiHandle content = impl.store.add(impl.store.layerRoot(layer), Kind::Panel, popupRootSpec(root));
+    impl.layerInfo[layer].content = content;
+    applyTransition(impl, layer);
+    return PopupRef(this, content);
+}
+
+void Canvas::pop() {
+    for (u16 layer = u16(impl_->layerInfo.size()); layer-- > 1;) {
+        if (impl_->layerInfo[layer].phase != LayerInfo::Phase::Exiting) {
+            impl_->closeLayer(layer);
+            return;
+        }
+    }
+}
+
+u32 Canvas::popupCount() const {
+    u32 n = 0;
+    for (size_t i = 1; i < impl_->layerInfo.size(); ++i) n += impl_->layerInfo[i].phase != LayerInfo::Phase::Exiting;
+    return n;
+}
+
+bool PopupRef::valid() const { return canvas_ && canvas_->impl().layerOfContent(content_) != 0; }
+
+void PopupRef::close() {
+    if (!canvas_) return;
+    if (u16 layer = canvas_->impl().layerOfContent(content_)) canvas_->impl().closeLayer(layer);
+}
+
+void PopupRef::onClose(std::function<void()> fn) {
+    if (!canvas_) return;
+    if (u16 layer = canvas_->impl().layerOfContent(content_)) canvas_->impl().layerInfo[layer].onClose = std::move(fn);
+}
+
+ElementRef PopupRef::root() { return valid() ? ElementRef(canvas_, content_) : ElementRef(); }
+
+UiHandle PopupRef::find(std::string_view id, int kind) const {
+    if (!canvas_) return {};
+    Canvas::Impl& impl = canvas_->impl();
+    const u16 layer = impl.layerOfContent(content_);
+    if (layer == 0) return {};
+    const UiHandle h = impl.store.findIn(layer, id);
+    const Element* e = impl.store.live(h);
+    if (!e || (kind >= 0 && e->kind != Kind(kind))) {
+        impl.reportMissing(id, kind >= 0 ? kindName(Kind(kind)) : "element", layer);
+        return {};
+    }
+    return h;
+}
+
+ElementRef PopupRef::element(std::string_view id) { return ElementRef(canvas_, find(id, -1)); }
+PanelRef PopupRef::panel(std::string_view id) { return PanelRef(canvas_, find(id, int(Kind::Panel))); }
+ImageRef PopupRef::image(std::string_view id) { return ImageRef(canvas_, find(id, int(Kind::Image))); }
+LabelRef PopupRef::label(std::string_view id) { return LabelRef(canvas_, find(id, int(Kind::Label))); }
+ButtonRef PopupRef::button(std::string_view id) { return ButtonRef(canvas_, find(id, int(Kind::Button))); }
+ToggleRef PopupRef::toggle(std::string_view id) { return ToggleRef(canvas_, find(id, int(Kind::Toggle))); }
+SliderRef PopupRef::slider(std::string_view id) { return SliderRef(canvas_, find(id, int(Kind::Slider))); }
+ProgressRef PopupRef::progress(std::string_view id) { return ProgressRef(canvas_, find(id, int(Kind::ProgressBar))); }
 
 Remembered* Canvas::Impl::rememberFor(const Element& e) {
     if (e.spec.id.empty()) return nullptr;

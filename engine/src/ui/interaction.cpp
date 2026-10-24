@@ -49,6 +49,11 @@ UiHandle hitTest(Canvas::Impl& impl, Vec2 pos, bool& blocked) {
     ElementStore& store = impl.store;
     std::vector<UiHandle>& order = impl.hitScratch;
     for (u16 layer = store.layerCount(); layer-- > 0;) {
+        // A popup that is opening or closing takes no touches, but still shields what's below.
+        if (layer < impl.layerInfo.size() && impl.layerInfo[layer].phase != LayerInfo::Phase::Open) {
+            blocked = true;
+            return {};
+        }
         // Draw order (pre-order), then search it backwards: the last drawn is on top.
         order.clear();
         std::vector<UiHandle>& stack = impl.hitStack;
@@ -138,6 +143,11 @@ void uiInput(Canvas& canvas, InputBackend& input) {
         impl.hitStack.reserve(impl.store.size() * 2);
     }
     refreshLayout(impl);
+    // Back / Escape closes the top popup before the scene can see it.
+    if (input.backPressed() && canvas.popupCount() > 0) {
+        canvas.pop();
+        input.consumeBack();
+    }
     for (int i = 0; i < input.pointerCount(); ++i) {
         const Pointer& p = *input.pointer(i);
         Touch* t = findTouch(impl, p.id);

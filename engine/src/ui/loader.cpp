@@ -454,7 +454,9 @@ Style readStyle(yyjson_val* v, Reader& r) {
     return s;
 }
 
-void logAll(const LoadResult& r) {
+} // namespace
+
+void logLoadResult(const LoadResult& r) {
 #if defined(NOVA_DEV_TOOLS)
     if (!r.ok && !r.firstError.empty() && std::find(r.errors.begin(), r.errors.end(), r.firstError) == r.errors.end()) {
         log::error("%s", r.firstError.c_str());
@@ -464,8 +466,6 @@ void logAll(const LoadResult& r) {
     (void)r;
 #endif
 }
-
-} // namespace
 
 FileReader assetFileReader() {
     return [](std::string_view path) -> std::optional<std::string> {
@@ -547,7 +547,7 @@ void loadGameTheme(UiShared& shared, const FileReader& read) {
     if (!read("ui/theme.json")) return; // optional
     LoadResult r = loadTheme("ui/theme.json", read, shared.theme);
     recordThemeStamps(shared, r.files);
-    logAll(r);
+    logLoadResult(r);
 }
 
 void uiSetFileReader(Canvas& canvas, FileReader read) { canvas.impl().reader = std::move(read); }
@@ -561,7 +561,7 @@ void Canvas::load(std::string_view file) {
     const Theme* theme = impl.services && impl.services->ui ? &impl.services->ui->theme : nullptr;
     std::vector<NodeSpec> nodes;
     LoadResult result = loadLayout(file, impl.reader, theme, nodes);
-    logAll(result);
+    logLoadResult(result);
     if (!result.ok) return;
     impl.buildLayer(0, nodes, std::string(file), result);
 }

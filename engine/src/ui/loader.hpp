@@ -45,6 +45,9 @@ LoadResult loadLayout(std::string_view path, const FileReader& read, const Theme
 // Parses `{"styles": {...}}` and sets each style into `theme`.
 LoadResult loadTheme(std::string_view path, const FileReader& read, Theme& theme);
 
+// Dev builds log a load's fatal error and every validation message.
+void logLoadResult(const LoadResult& result);
+
 // The game's ui/theme.json, if it exists, into the shared theme (errors logged in dev builds).
 void loadGameTheme(UiShared& shared, const FileReader& read);
 

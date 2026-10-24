@@ -83,4 +83,13 @@ struct UiSpec {
     f32 animate = 0; // progress bar: seconds to ease toward a new value
 };
 
+// How a popup opens and closes.
+struct PopupOptions {
+    f32 dim = 0.6f;               // backdrop opacity (black)
+    bool closeOnBackdrop = false; // a tap outside the popup closes it
+    Transition enter = Transition::Pop;
+    Transition exit = Transition::Fade;
+    f32 duration = 0.2f;          // seconds, for enter and exit
+};
+
 } // namespace nova::ui

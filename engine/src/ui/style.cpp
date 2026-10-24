@@ -181,6 +181,13 @@ Theme Theme::builtin() {
     progress.background = shape(8, 0x374151FF);
     progress.tint = Color::fromHex(0x22C55EFF);
     t.set("progress", progress);
+    // Popup backdrops: a black sheet whose opacity is the popup's dim; no pressed look.
+    Style backdrop;
+    backdrop.extends = "default";
+    backdrop.background = shape(0, 0x000000FF);
+    backdrop.pressed.scale = 1.f;
+    backdrop.pressed.tint = Color::White;
+    t.set("ui-backdrop", backdrop);
     return t;
 }
 

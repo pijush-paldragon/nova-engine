@@ -105,6 +105,34 @@ Element* ElementStore::live(UiHandle h) {
 }
 const Element* ElementStore::live(UiHandle h) const { return const_cast<ElementStore*>(this)->live(h); }
 
+void ElementStore::eraseLayer(u16 layer) {
+    if (layer == 0 || layer >= layers_.size()) return;
+    const UiHandle root = layers_[layer];
+    scratch_.clear();
+    scratch_.push_back(root);
+    while (!scratch_.empty()) {
+        UiHandle cur = scratch_.back();
+        scratch_.pop_back();
+        Element* el = get(cur);
+        el->removed = true;
+        for (UiHandle c = el->firstChild; c.valid(); c = get(c)->next) scratch_.push_back(c);
+    }
+    pending_.push_back(root);
+    layers_.erase(layers_.begin() + layer);
+    ids_.erase(ids_.begin() + layer);
+    layerDirty_.erase(layerDirty_.begin() + layer);
+    pool_.forEach([&](UiHandle, Element& e) {
+        if (!e.removed && e.layer > layer) --e.layer;
+    });
+    for (u8& d : layerDirty_) d = 1;
+}
+
+UiHandle ElementStore::findIn(u16 layer, std::string_view id) const {
+    if (layer >= ids_.size()) return {};
+    auto it = ids_[layer].find(id);
+    return it != ids_[layer].end() ? it->second : UiHandle{};
+}
+
 UiHandle ElementStore::find(std::string_view id) const {
     for (size_t i = ids_.size(); i-- > 0;) {
         if (auto it = ids_[i].find(id); it != ids_[i].end()) return it->second;

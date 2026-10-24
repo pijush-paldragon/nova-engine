@@ -38,6 +38,7 @@ struct Element {
     // Visual state and caches resolved from the style (draw.cpp).
     f32 scale = 1;        // animated scale; the style's scale applies on top at draw
     bool pressed = false;
+    bool backdrop = false;    // a popup layer's backdrop (kept when the layer's content reloads)
     f32 pressAmount = 0;      // eases toward pressed (0..1) over 0.08 s
     f32 shown = 0;            // ProgressBar: displayed value
     f32 shownFrom = 0, shownT = 1; // ProgressBar animation start value and progress
@@ -70,6 +71,8 @@ public:
 
     // A new layer's root (a full-screen stack panel); layer 0 exists from construction.
     UiHandle addLayer();
+    // Removes a layer and everything in it (freed at flush); layers above move down one index.
+    void eraseLayer(u16 layer);
     UiHandle layerRoot(u16 layer) const { return layers_[layer]; }
     u16 layerCount() const { return u16(layers_.size()); }
 
@@ -96,6 +99,7 @@ public:
 
     // Searches layers from the top down.
     UiHandle find(std::string_view id) const;
+    UiHandle findIn(u16 layer, std::string_view id) const;
     u32 size() const { return pool_.size(); }
 
     template <class F>
