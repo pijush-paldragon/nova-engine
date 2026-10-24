@@ -108,13 +108,44 @@ struct UiFixture {
         SDL_QuitSubSystem(SDL_INIT_VIDEO);
     }
 
-    // One frame: update (layout) and draw.
-    void frame(f32 dt = 1.f / 60.f) {
+    // A frame in the App's order: UI input and callbacks, then update and draw, then the input
+    // snapshot rolls over. Tests can check gameplay input between the two halves.
+    void beginUi() {
+        ui::uiInput(canvas, input);
+        ui::uiDispatch(canvas);
+    }
+    void endFrame(f32 dt = 1.f / 60.f) {
         ui::uiUpdate(canvas, dt);
         renderer->beginFrame();
         ui::uiDraw(canvas, *renderer, batch);
         renderer->endFrame();
         ui::uiFlush(canvas);
+        input.beginFrame(dt);
+    }
+    void frame(f32 dt = 1.f / 60.f) {
+        beginUi();
+        endFrame(dt);
+    }
+
+    // Touches in design coordinates, fed through the real SDL event path.
+    void finger(SDL_EventType type, u64 id, Vec2 design) {
+        const ScreenFit& fit = renderer->fit();
+        SDL_Event e{};
+        e.type = type;
+        e.tfinger.fingerID = id;
+        e.tfinger.x = (design.x - fit.visible.x) * fit.scale / fit.windowPx.x;
+        e.tfinger.y = (design.y - fit.visible.y) * fit.scale / fit.windowPx.y;
+        input.handleEvent(e, fit);
+    }
+    void press(u64 id, Vec2 at) { finger(SDL_EVENT_FINGER_DOWN, id, at); }
+    void move(u64 id, Vec2 to) { finger(SDL_EVENT_FINGER_MOTION, id, to); }
+    void release(u64 id, Vec2 at) { finger(SDL_EVENT_FINGER_UP, id, at); }
+    // Press and release at one point across two frames.
+    void tap(Vec2 at, u64 id = 1) {
+        press(id, at);
+        frame();
+        release(id, at);
+        frame();
     }
 };
 

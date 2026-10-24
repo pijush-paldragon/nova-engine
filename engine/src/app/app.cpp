@@ -166,6 +166,9 @@ void App::runFrame(f64 dt) {
 
     const f32 step = f32(clock_.step());
     const i32 steps = clock_.advance(dt);
+    // UI first: touches it takes are hidden from gameplay, and its callbacks run at this one point.
+    ui::uiInput(top->ui_, input_);
+    ui::uiDispatch(top->ui_);
     top->physics_.beginFrame();
     SystemContext ctx{top->world_, input_, top->physics_, *assets_, *audio_, top->camera_, frame_, random_, step};
     for (i32 i = 0; i < steps; ++i) {

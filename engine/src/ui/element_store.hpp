@@ -1,5 +1,6 @@
 #pragma once
 
+#include <nova/audio/audio.hpp>
 #include <nova/core/handle.hpp>
 #include <nova/render/types.hpp>
 #include <nova/text/text.hpp>
@@ -41,6 +42,7 @@ struct Element {
     u32 themeGen = 0;
     FontHandle font;
     SpriteRegion region;      // Image sprite, or Button icon
+    SoundHandle clickSound;   // from the style
     std::unique_ptr<TextRun, TextRunDeleter> textRun;
 };
 

@@ -2,6 +2,7 @@
 
 #include <nova/ui/element.hpp>
 
+#include <functional>
 #include <memory>
 #include <string_view>
 
@@ -27,6 +28,10 @@ public:
     ToggleRef toggle(std::string_view id);
     SliderRef slider(std::string_view id);
     ProgressRef progress(std::string_view id);
+
+    // Runs fn when the button with this id is clicked. Bound by id, so it survives the element
+    // being removed and re-added (or the layout file reloading).
+    void onClick(std::string_view id, std::function<void()> fn);
 
     // Elements alive in this canvas, root included (removed ones count until the frame ends).
     u32 elementCount() const;

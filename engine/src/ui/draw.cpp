@@ -131,6 +131,9 @@ void prepareElement(Canvas::Impl& impl, Element& e, const UiShared& shared) {
             if (style.font.empty()) logOnce("ui: style \"" + std::string(styleNameOf(e)) + "\" has no font");
             else e.font = impl.services->assets->font(style.font, style.fontSize, impl.scope);
         }
+        e.clickSound = style.clickSound.empty() || !impl.services->assets
+                           ? SoundHandle{}
+                           : impl.services->assets->sound(style.clickSound, impl.scope);
         e.region = {};
         if (impl.services->assets) {
             const std::string& sprite = e.kind == Kind::Image ? e.spec.sprite : e.spec.icon;

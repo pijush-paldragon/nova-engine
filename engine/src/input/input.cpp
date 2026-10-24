@@ -38,9 +38,28 @@ Vec2 pixelsToDesign(Vec2 px, const ScreenFit& fit) {
 
 const Pointer* Input::primary() const {
     for (int i = 0; i < count_; ++i) {
-        if (!pointers_[size_t(i)].released) return &pointers_[size_t(i)];
+        const Pointer& p = pointers_[size_t(i)];
+        if (!p.released && !p.consumedByUi) return &p;
     }
-    return count_ > 0 ? &pointers_[0] : nullptr;
+    for (int i = 0; i < count_; ++i) {
+        if (!pointers_[size_t(i)].consumedByUi) return &pointers_[size_t(i)];
+    }
+    return nullptr;
+}
+
+bool Input::tapped() const {
+    if (!tapped_) return false;
+    for (int i = 0; i < count_; ++i) {
+        const Pointer& p = pointers_[size_t(i)];
+        if (p.id == tapId_ && p.released) return !p.consumedByUi;
+    }
+    return true;
+}
+
+void InputBackend::setConsumed(u64 pointerId) {
+    for (int i = 0; i < count_; ++i) {
+        if (pointers_[size_t(i)].id == pointerId) pointers_[size_t(i)].consumedByUi = true;
+    }
 }
 
 void InputBackend::beginFrame(f32 dt) {
@@ -155,7 +174,11 @@ void InputBackend::release(u64 id, Vec2 pos, bool canTap) {
     p->pos = pos;
     p->held = false;
     p->released = true;
-    if (canTap && p->heldTime < kTapMaxSeconds && (p->pos - p->startPos).length() < kTapMaxTravel) tapped_ = true;
+    p->cancelled = !canTap;
+    if (canTap && p->heldTime < kTapMaxSeconds && (p->pos - p->startPos).length() < kTapMaxTravel) {
+        tapped_ = true;
+        tapId_ = id;
+    }
 }
 
 void InputBackend::setKey(Key k, bool down) {

@@ -17,6 +17,11 @@ public:
     void beginFrame(f32 dt);
     void handleEvent(const SDL_Event& event, const ScreenFit& fit);
 
+    // The UI took this pointer: tapped() and primary() stop reporting it.
+    void setConsumed(u64 pointerId);
+    // The UI used the back button (closed a popup): backPressed() is false this frame.
+    void consumeBack() { backPressed_ = false; }
+
 private:
     Pointer* find(u64 id);
     void press(u64 id, Vec2 pos);

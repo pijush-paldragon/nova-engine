@@ -5,6 +5,7 @@
 
 #include <nova/ui/types.hpp>
 
+#include <functional>
 #include <string_view>
 
 namespace nova::ui {
@@ -73,6 +74,8 @@ class ButtonRef : public ElementRef {
 public:
     using ElementRef::ElementRef;
     void setText(std::string_view text);
+    // Bound to the element's id when it has one, else to this element.
+    void onClick(std::function<void()> fn);
 };
 
 class ToggleRef : public ElementRef {

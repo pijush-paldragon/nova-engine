@@ -20,6 +20,8 @@ struct Pointer {
     bool pressed = false;  // went down this frame
     bool held = false;     // currently down
     bool released = false; // went up this frame
+    bool cancelled = false; // ended by the system (a gesture or call), not lifted: never a tap
+    bool consumedByUi = false; // landed on UI: gameplay should ignore it (tapped()/primary() do)
 };
 
 enum class Key : u8 { Left, Right, Up, Down, Space, Enter, Escape, P, R, F1, Count };
@@ -31,10 +33,11 @@ public:
 
     int pointerCount() const { return count_; }
     const Pointer* pointer(int i) const { return (i >= 0 && i < count_) ? &pointers_[size_t(i)] : nullptr; }
-    // The oldest pointer still down; if none are down, the one released this frame.
+    // The oldest pointer still down; if none are down, the one released this frame. Pointers
+    // the UI consumed are skipped (null when only UI touches exist).
     const Pointer* primary() const;
-    // A quick press-and-release without dragging, this frame.
-    bool tapped() const { return tapped_; }
+    // A quick press-and-release without dragging, this frame, that did not land on UI.
+    bool tapped() const;
 
     bool keyDown(Key k) const { return keysDown_[size_t(k)]; }
     bool keyPressed(Key k) const { return keysPressed_[size_t(k)]; }
@@ -48,6 +51,7 @@ protected:
     std::array<Pointer, kMaxPointers> pointers_{};
     int count_ = 0;
     bool tapped_ = false;
+    u64 tapId_ = 0; // the pointer that tapped
     bool backPressed_ = false;
     bool threeFingerTap_ = false;
     std::bitset<size_t(Key::Count)> keysDown_;
