@@ -32,9 +32,9 @@ MyGame/
 ├─ CMakeLists.txt        finds the engine, then nova_add_game(...) and nova_add_game_tests(...)
 ├─ CMakePresets.json     macos-debug, macos-release, ios
 ├─ src/main.cpp          configureGame(): title, design size, orientation, first scene
-├─ src/scenes/           a starter TitleScene (logo, title, "Tap anywhere")
+├─ src/scenes/           a starter TitleScene (logo, plus the title and Start button from ui/title.json)
 ├─ tests/test_game.cpp   game-logic tests (desktop)
-├─ assets/               starter atlas, sound, font (Fredoka, OFL)
+├─ assets/               starter atlas, sound, font (Fredoka, OFL); ui/ holds layout files and theme.json
 └─ platforms/
    ├─ ios/               Info.plist.in, LaunchScreen.storyboard, Assets.xcassets/AppIcon (yours to edit)
    └─ android/           Gradle project: app/build.gradle holds the app's identity and signing
@@ -184,6 +184,65 @@ private:
 ```
 
 Add new source files to `SOURCES` in `CMakeLists.txt`, and test files to `nova_add_game_tests(...)`.
+
+## 7. Building UI
+
+Every scene has a UI canvas, `ui()`, drawn above that scene's world: menus, HUDs, settings,
+popups. Screens are usually JSON layout files under `assets/ui/`, and C++ attaches behaviour by
+element id:
+
+```cpp
+void MenuScene::onEnter() {
+    ui().load("ui/menu.json");
+    ui().label("best").setText("Best: 120");
+    ui().onClick("play", [this] { scenes().replace<PlayScene>(); });
+    ui().onClick("settings", [this] { ui().push("ui/settings.json", {.closeOnBackdrop = true}); });
+}
+```
+
+```json
+{ "type": "panel", "width": "fill", "height": "fill", "layout": "column", "align": "center", "gap": 24,
+  "children": [
+    { "type": "label", "id": "best", "style": "muted", "text": "Best: 0" },
+    { "type": "button", "id": "play", "style": "primary", "text": "Play", "width": 360 } ] }
+```
+
+- **Elements:** `panel` (container), `image`, `label`, `button`, `toggle`, `slider`, `progress`.
+  Look them up with `ui().button("play")`, `ui().slider("music")`, and so on. A typo'd id logs
+  `ui: no button "plya" ...` in debug builds and returns an empty reference that ignores calls,
+  so a mistake never crashes the game.
+- **Layout:** sizes are pixels, `"fill"` (or `"fill:2"` for twice the share) or `"fit"` (the
+  content's size). Containers are `stack` (children placed by `anchor` + `offset`), `row` or
+  `column` (with `gap`, `padding`, `justify`, `align`). `"safeArea": true` keeps a container's
+  children clear of notches and home indicators; use it on a HUD.
+  The root covers the whole visible screen. To line UI up with world sprites placed in design
+  coordinates, give the root `"width": 720, "height": 1280, "anchor": "center"` (your design size).
+- **Styles:** `assets/ui/theme.json` defines named styles: background (a rounded shape with a
+  colour, or an atlas sprite with nine-slice `"slice"` insets), outline, tint, padding, font,
+  font size, text colour, click sound, and `states` for `pressed`, `disabled` and `checked`.
+  A style can `extends` another; one without `extends` builds on `"default"`, so set your font
+  there. Without a theme, built-in styles (`primary`, `secondary`, `danger`, `panel`, `hud`) work
+  but labels need a font.
+- **Sprites** in layouts are `"<atlas>/<region>"` (e.g. `"sprites/coin"`) or a `.png` path.
+- **Touches:** buttons click when the finger lifts inside them, and a press cancels if the finger
+  slides more than 16 px away. A touch that lands on a button never reaches gameplay:
+  `input().tapped()` and `input().primary()` skip it.
+- **Popups:** `ui().push("ui/dialog.json", {...})` opens a popup above everything, with a dimmed
+  backdrop that blocks touches below. Android back / Escape closes the top popup first.
+  `popup.onClose(...)` runs after its exit transition. Transitions are `fade`, `pop` and
+  `slide-up/down/left/right`.
+- **Animation:** `ui().button("play").animate().scale(1.05f, 0.8f).yoyo().loop()`, plus
+  `.fade(...)` and `.move(...)`. Animating never re-runs layout.
+- **Includes:** `{"include": "ui/parts/coins.json", "id": "coins"}` reuses a piece of layout,
+  with the other keys overriding the included root.
+- **Live reload:** while a debug build runs on your Mac, saving a layout file or `theme.json`
+  updates the screen within half a second. Values your code set (`setText`, `setValue`...) and
+  click handlers are kept. A broken edit keeps the old screen and shows a red bar with the error
+  (file, line and column) until you fix it. Phones and release builds load layouts once; release
+  builds read them from the encrypted `game.pak`.
+- **No allocations per frame:** updating a label with text no longer than before is free, and
+  setting the same text again does nothing. Use `char` buffers and `snprintf`, as with
+  `TextLabel`.
 
 ## The rules of the engine
 

@@ -125,6 +125,8 @@ python3 tools/gen_assets.py && bash tools/fetch_font.sh && python3 tools/gen_ass
 
 Your own art: pack a folder of sprite images into an atlas with `python3 tools/pack_atlas.py <folder> -o assets/<name>` (see [NEW_GAME.md](docs/NEW_GAME.md#4-sprite-atlases)).
 
+Game UI (menus, HUDs, popups, settings) is built from JSON layout files under `assets/ui/` with live reload on the Mac; see [Building UI](docs/NEW_GAME.md#7-building-ui).
+
 Release builds (macOS/iOS Release, Android `release`) ship assets as one encrypted, compressed `game.pak` instead of loose files; debug builds use the files directly. The per-game key lives in `<game>/.nova/pack.key` (git-ignored; back it up). See [Protecting assets](docs/NEW_GAME.md#protecting-assets).
 
 ## Upgrading a dependency

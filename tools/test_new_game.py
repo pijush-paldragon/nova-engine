@@ -7,6 +7,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import json
 import unittest
 from pathlib import Path
 
@@ -22,6 +23,11 @@ def text_files(root: Path):
     for path in root.rglob("*"):
         if path.is_file() and ".git" not in path.parts and new_game.is_text(path):
             yield path
+
+
+def strip_comments(text):
+    """Layout files allow // comments; drop them so json.loads can check the rest."""
+    return "\n".join(line for line in text.splitlines() if not line.strip().startswith("//"))
 
 
 class GenerateTests(unittest.TestCase):
@@ -49,6 +55,14 @@ class GenerateTests(unittest.TestCase):
         self.assertIn("BUNDLE_ID com.studio.mygame", cmake)
         self.assertTrue((out / ".gitignore").exists())
         self.assertFalse(any(p.name.endswith(".template") for p in out.rglob("*")))
+
+    def test_generated_game_has_ui_layouts(self):
+        out = self.gen(self.tmp / "MyGame")
+        title = json.loads(strip_comments((out / "assets/ui/title.json").read_text()))
+        theme = json.loads(strip_comments((out / "assets/ui/theme.json").read_text()))
+        self.assertEqual(title["type"], "panel")
+        self.assertIn("styles", theme)
+        self.assertIn('ui().load("ui/title.json")', (out / "src/scenes/title_scene.cpp").read_text())
 
     def test_gitignore_protects_pack_key(self):
         out = self.gen(self.tmp / "MyGame")

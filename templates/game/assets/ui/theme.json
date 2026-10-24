@@ -1,0 +1,11 @@
+{
+  // UI styles for the whole game. A style without "extends" builds on "default".
+  // See "Building UI" in nova-engine's docs/NEW_GAME.md.
+  "styles": {
+    "default": { "font": "fonts/Fredoka.ttf", "fontSize": 40, "textColor": "#ffffff",
+                 "states": { "pressed": { "tint": "#d9d9d9", "scale": 0.95 }, "disabled": { "opacity": 0.5 } } },
+    "title": { "fontSize": 72 },
+    "primary": { "background": { "shape": "rounded", "radius": 24, "color": "#4cc9f0" }, "textColor": "#101828",
+                 "fontSize": 44, "padding": [18, 40, 18, 40], "clickSound": "sfx/tap.wav" }
+  }
+}

@@ -32,6 +32,10 @@ cd platforms/android && ./gradlew installDebug
 
 With several devices attached, choose one with `ANDROID_SERIAL=<serial>`.
 
+## UI
+
+The title screen's UI is `assets/ui/title.json`, styled by `assets/ui/theme.json`. Edit either while a macOS debug build runs and the screen updates within a second. See "Building UI" in the engine's `docs/NEW_GAME.md`.
+
 ## Sprite atlases
 
 Keep each sprite as its own PNG in a folder such as `art/gameplay/`, then pack it:
